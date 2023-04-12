@@ -18,6 +18,8 @@ devtools::document()
 devtools::install_local(force = TRUE)
 ##
 library("fairscopes")
-citation("fairscopes")
+#citation("fairscopes")
+#help("fairscopes")
 
-help("fairscopes")
+
+foo_add(3,3)

@@ -9,7 +9,7 @@ Authors@R: c(person(given  = "Dominik",
                     family = "Telschow", 
                     email  = "fabian.telschow@hu-berlin.de",         
                     role   = "aut"))
-Description: What the package does (one paragraph).
+Description: Inference for functional data using Simultanouse Confidence Probability Excursion (SCoPE) Sets. Inference using SCoPE sets generalizes simoultanouse inference using simultanous confidence bands allowing for more powerful simultanous hypothesis tests.  
 License: `use_mit_license()`
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
