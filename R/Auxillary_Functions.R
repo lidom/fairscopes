@@ -189,6 +189,38 @@ q_method_gen <- function(name, ...){
         q.method$fair.niter = fair.niter
       }
     }
+  }else if(q.method$name == "gKR_t"){
+    if(!("df" %in% arguments)){
+      q.method$df = NULL
+    }else{
+      q.method$df = df
+    }
+    if(!("knots" %in% arguments)){
+      q.method$knots = c(0,1)
+    }else{
+      q.method$knots = knots
+    }
+    if(!("tau_estim" %in% arguments)){
+      q.method$tau_est = tau_est
+    }else{
+      q.method$tau_est = tau_estim
+    }
+    if(!("I_weights" %in% arguments)){
+      q.method$I_weights = rep(1/(length(q.method$knots) - 1), length(q.method$knots) - 1)
+    }else{
+      q.method$I_weights = I_weights
+    }
+    if(!("alpha_up" %in% arguments)){
+      q.method$alpha_up = alpha*(length(q.method$knots)-1)
+    }else{
+      q.method$alpha_up = alpha_up
+    }
+    if(!("maxIter" %in% arguments)){
+      q.method$maxIter = 0
+    }else{
+      q.method$maxIter = maxIter
+    }
+
   }else if(q.method$name == "t.iid"){
     q.method$df      = N - 1
   }

@@ -5,7 +5,7 @@
 #------------------------------------------------------------------------------#
 # Contained functions:
 # - GeneralKacRice_t()
-# - fairGeneralKacRice_t()
+# - fair_quantile_EEC_t()
 #------------------------------------------------------------------------------#
 # Developer notes:
 # - Fix the documentation and man pages
@@ -48,7 +48,7 @@ GeneralKacRice_t <- function(tau, u, du, x, df = NULL,
         pnorm(q = -du(t) / sigma / tau(t))
     }
   }else{
-
+    # Add here the functions for the t-Kac-Rice formula
   }
 
   I1 <- f0(-u(x[t0]) / sigma) +
@@ -68,7 +68,7 @@ GeneralKacRice_t <- function(tau, u, du, x, df = NULL,
 #' @inheritParams SCoPES
 #' @return Standard error under the assumption the data is Gaussian
 #' @export
-fairGeneralKacRice <- function(alpha, df = NULL, knots, tau, sigma = 1,
+fair_quantile_EEC_t <- function(alpha, df = NULL, knots, tau, sigma = 1,
                       I_weights = rep(1/(length(knots) - 1), length(knots) - 1),
                       alpha_up = alpha*(length(knots)-1), maxIter = 20,
                       tol = alpha / 100){

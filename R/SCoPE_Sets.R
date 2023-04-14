@@ -8,6 +8,7 @@
 # - hatUc()
 # - SCoPES()
 # - plot_SCoPES()
+# - fairSCB()
 #------------------------------------------------------------------------------#
 # Developer notes:
 #
@@ -192,7 +193,7 @@ SCoPES <- function(alpha, C, x = seq(0, 1, length.out = length(hatmu)),
                                  method  = q.method$Boottype,
                                  weights = q.method$weights)$samples
     if( !(all(!hatmu1C$minus) && all(!hatmu1C$plus)) ){
-      fair.q = OptimizeFairThreshold1D(samples,
+      fair.q = Optimize_Fair_quantile_boot(samples,
                                        x,
                                        fair.intervals = q.method$fair.intervals,
                                        fair.type = q.method$fair.type,
@@ -331,5 +332,89 @@ plot_SCoPES <- function(scopes, index_C = c(1,1),
     lines(scopes$x, scopes$C$plus[, index_C[2]], lty = 1, col = "red")
   }else{
     lines(scopes$x, scopes$C$minus[, index_C[1]], lty = 1, col = "orchid3")
+  }
+}
+
+
+#' This functions computes the generalization of the Kac-Rice formula
+#' from ...
+#'
+#' @inheritParams SCoPES
+#' @return Standard error under the assumption the data is Gaussian
+#' @export
+fairSCB <- function(alpha, hatmu, hatrho, tN,
+                    x = seq(0, 1, length.out = length(hatmu)),
+                    q.method, mu = NULL){
+
+  #---------------------------------------------------------------------------
+  # Estimate the quantile funcion q.
+  hatmu1C = list(minus = rep(TRUE, length(hatmu)),
+                 plus  = rep(TRUE, length(hatmu)))
+
+  fair.q = NULL
+  if(q.method$name == "mboot"){
+    q = MultiplierBootstrapSplit(alpha   = alpha,
+                                 R       = q.method$R,
+                                 minus   = hatmu1C$minus,
+                                 plus    = hatmu1C$plus,
+                                 Mboots  = q.method$Mboots,
+                                 method  = q.method$Boottype,
+                                 weights = q.method$weights)$q
+    if(is.infinite(q)){
+      q = 0
+    }
+  }else if(q.method$name == "fair.mboot"){
+    samples = MultiplierBootstrapSplit(alpha   = alpha,
+                                       R       = q.method$R,
+                                       minus   = hatmu1C$minus,
+                                       plus    = hatmu1C$plus,
+                                       Mboots  = q.method$Mboots,
+                                       method  = q.method$Boottype,
+                                       weights = q.method$weights)$samples
+    if( !(all(!hatmu1C$minus) && all(!hatmu1C$plus)) ){
+      fair.q = Optimize_Fair_quantile_boot(samples,
+                                           x = x,
+                                           fair.intervals = q.method$fair.intervals,
+                                           fair.type = q.method$fair.type,
+                                           crit.set  = hatmu1C,
+                                           alpha  = alpha,
+                                           niter  = q.method$fair.niter,
+                                           subI   = NULL,
+                                           print.coverage = q.method$print.coverage )
+      q = fair.q$q
+    }else{
+      fair.q = NULL
+      q = rep(0, length(x))
+    }
+
+  }else if(q.method$name == "gKR_t"){
+    q = fair_quantile_EEC_t(alpha, df = q.method$df, knots = q.method$knots,
+                            q.method$tau, I_weights = q.method$I_weights,
+                            alpha_up = q.method$alpha_up,
+                            maxIter  = q.method$maxIter,
+                            tol = alpha / 100)$u
+    q = q(x)
+  }else if(q.method$name == "gauss.iid"){
+    q = maxGauss_quantile(p = 1 - alpha, muC = hatmu1C)
+  }else if(q.method$name == "t.iid"){
+    q = maxT_quantile(p = 1 - alpha, muC = hatmu1C, df = q.method$df)
+  }
+
+  SCB = cbind(hatmu - tN*hatrho*q, hatmu + q*tN*hatrho)
+  rownames(SCB) <- x
+  colnames(SCB) <- c("low", "up")
+
+  # Output
+  if(is.null(mu)){
+    return(SCB)
+  }else{
+    mux = mu(x)
+    loc.cov = abs(mu_model(x) - hatmu) <= q*tN*hatrho
+
+    return(list(SCB = cbind(hatmu - tN*hatrho*q, hatmu + tN*hatrho*q),
+                q = q,
+                loc.cov  = loc.cov,
+                glob.cov = all(loc.cov),
+    ))
   }
 }

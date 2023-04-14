@@ -7,8 +7,8 @@
 # Required packages:
 #
 # Contained functions:
-#      - FairThreshold1D()
-#      - OptimizeFairThreshold1D()
+#      - Fair_quantile_boot()
+#      - Optimize_Fair_quantile_boot()
 #      - Alg1_gKR_t()
 #      - Alg1_gKR_const()
 #      - Alg1_z_DL()
@@ -39,7 +39,7 @@
 #'   thresholding function with respect to the sample.
 #' }
 #' @export
-FairThreshold1D <- function(samples, x, fair.intervals,
+Fair_quantile_boot <- function(samples, x, fair.intervals,
                             fair.type = "linear",
                             crit.set,
                             alpha = 0.05,
@@ -200,7 +200,7 @@ FairThreshold1D <- function(samples, x, fair.intervals,
 #'   thresholding function with respect to the sample.
 #' }
 #' @export
-OptimizeFairThreshold1D <- function(samples,
+Optimize_Fair_quantile_boot <- function(samples,
                                     x,
                                     fair.intervals,
                                     fair.type = "linear",
@@ -208,7 +208,7 @@ OptimizeFairThreshold1D <- function(samples,
                                     alpha  = 0.05,
                                     niter  = 10,
                                     diff.fair = NULL,
-                                    subI   = NULL,
+                                    subI  = NULL,
                                     inter = NULL,
                                     print.coverage = TRUE ){
 
@@ -227,12 +227,12 @@ OptimizeFairThreshold1D <- function(samples,
   }
 
   # Compute the fair threshold function
-  test = FairThreshold1D(samples = samples,
+  test = Fair_quantile_boot(samples = samples,
                          x = x,
                          fair.intervals = fair.intervals,
                          fair.type = fair.type,
-                         crit.set = crit.set,
-                         alpha = alpha,
+                         crit.set  = crit.set,
+                         alpha     = alpha,
                          diff.fair = diff.fair,
                          subI = subI, inter = inter )
 
@@ -271,7 +271,7 @@ OptimizeFairThreshold1D <- function(samples,
       alpha_new = mean(a)
 
       # Get new quantile function
-      test   = FairThreshold1D(samples = samples,
+      test   = Fair_quantile_boot(samples = samples,
                                x = x,
                                fair.intervals = fair.intervals,
                                fair.type = fair.type,
@@ -296,8 +296,8 @@ OptimizeFairThreshold1D <- function(samples,
 #-------------------------------------------------------------------------------
 # Kac Rice Algorithms
 #-------------------------------------------------------------------------------
-#' Find an optimal oiecewise linear quantile function q to remove conservativeness of
-#' fairGeneralKacRice().
+#' Find an optimal piecewise linear quantile function q to remove
+#' conservativeness of standard Kac Rice formula approaches.
 #'
 #' @param sample add
 #' @return list with elements
@@ -412,7 +412,7 @@ Alg1_gKR_t <- function(alpha, knots, tau, df = NULL, sigma = 1,
 
 
 #' Find an optimal piecewise constant quantile function q to remove
-#' conservativeness of fairGeneralKacRice().
+#' conservativeness of standard Kac Rice formula approaches.
 #'
 #' @param sample add
 #' @return list with elements
