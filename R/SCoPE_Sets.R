@@ -344,7 +344,7 @@ plot_SCoPES <- function(scopes, index_C = c(1,1),
 #' @export
 fairSCB <- function(alpha, hatmu, hatrho, tN,
                     x = seq(0, 1, length.out = length(hatmu)),
-                    q.method, mu = NULL){
+                    q.method, mu = NULL, subI = NULL){
 
   #---------------------------------------------------------------------------
   # Estimate the quantile funcion q.
@@ -379,7 +379,7 @@ fairSCB <- function(alpha, hatmu, hatrho, tN,
                                            crit.set  = hatmu1C,
                                            alpha  = alpha,
                                            niter  = q.method$fair.niter,
-                                           subI   = NULL,
+                                           subI   = subI,
                                            print.coverage = q.method$print.coverage )
       q = fair.q$q
     }else{
@@ -408,13 +408,11 @@ fairSCB <- function(alpha, hatmu, hatrho, tN,
   if(is.null(mu)){
     return(SCB)
   }else{
-    mux = mu(x)
-    loc.cov = abs(mu_model(x) - hatmu) <= q*tN*hatrho
+    loc.cov = abs(mu - hatmu) <= q*tN*hatrho
 
     return(list(SCB = cbind(hatmu - tN*hatrho*q, hatmu + tN*hatrho*q),
                 q = q,
                 loc.cov  = loc.cov,
-                glob.cov = all(loc.cov),
-    ))
+                glob.cov = all(loc.cov)))
   }
 }

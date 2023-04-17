@@ -147,6 +147,7 @@ sub.intervals <- function(x, fair.intervals, crit.set){
 q_method_gen <- function(name, ...){
   # Get the input arguments
   arguments = as.list(match.call())
+  arguments = names(arguments)
 
   # Initialize the q_method list, which will be the output
   q.method <- list(
@@ -200,10 +201,11 @@ q_method_gen <- function(name, ...){
     }else{
       q.method$knots = knots
     }
-    if(!("tau_estim" %in% arguments)){
-      q.method$tau_est = tau_est
+    q.method$Nknots = length(q.method$knots) - 1
+    if(!("tau.est" %in% arguments)){
+      q.method$tau.est = tau_est
     }else{
-      q.method$tau_est = tau_estim
+      q.method$tau.est = tau.est
     }
     if(!("I_weights" %in% arguments)){
       q.method$I_weights = rep(1/(length(q.method$knots) - 1), length(q.method$knots) - 1)
