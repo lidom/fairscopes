@@ -141,14 +141,14 @@ sim_SCoPES <- function(Msim, N, alpha, C, q_method, model, I = NULL,
     return(list(coverage  = contain, Lcoverage = Lcontain,
                 Ucoverage = Ucontain, q = hatq, mu1C = hatmu1C,
                 detectL   = detectL, detectU = detectU,
-                NDetect       = NDetect,
-                NDetect_hommel  = NDetect_hommel,
-                NDetect_sidak = NDetect_sidak,
-                NDetect_BH    = NDetect_BH))
+                NDetect        = NDetect,
+                NDetect_hommel = NDetect_hommel,
+                NDetect_sidak  = NDetect_sidak,
+                NDetect_BH     = NDetect_BH))
   }else{
-    return(list(coverage = contain, Lcoverage = Lcontain,
-                Ucoverage   = Ucontain, q = hatq, mu1C = hatmu1C,
-                detectL     = detectL, detectU = detectU, NDetect = NDetect))
+    return(list(coverage  = contain, Lcoverage = Lcontain,
+                Ucoverage = Ucontain, q = hatq, mu1C = hatmu1C,
+                detectL   = detectL, detectU = detectU, NDetect = NDetect))
   }
 }
 
@@ -161,11 +161,21 @@ sim_SCoPES <- function(Msim, N, alpha, C, q_method, model, I = NULL,
 #' @return Standard error under the assumption the data is Gaussian
 #' @export
 sim_SCBs <- function(Msim, NVec = c(20, 50, 100, 200),
-                     alpha = 0.1, q_method, model, I = NULL){
+                     x, alpha = 0.1, q_method, model, mu_model, sd_model = NULL){
 
-    local.cov  <- list()
-    global.cov <- list()
+    local.cov  <- global.cov <- list()
+    quantile.est <- tau.est <- list()
     Timing     <- rep(NA, length(Nvec))
+
+    subI <- sub.intervals(x, q_method$knots,
+                          list(minus = rep(TRUE, length(x)),
+                               plus  = rep(TRUE, length(x))))$subI
+
+    # Initialize the q.method list for the data.
+    q.method.Y <- q.method
+    if(is.null(sd_model)){
+      q.method.Y$df = N-1
+    }
 
     #-------------------------------------------------------------------------------
     # Simulate the
@@ -173,51 +183,78 @@ sim_SCBs <- function(Msim, NVec = c(20, 50, 100, 200),
       N  = Nvec[n]
       tN = 1 / sqrt(N)
 
-      local.cov[[n]]  <- matrix(NA, Nknots, Msim)
+      local.cov[[n]]  <- matrix(NA, length(subI), Msim)
       global.cov[[n]] <- rep(NA, Msim)
+
+      quantile.est[[n]] <- matrix(NA, length(x), Msim)
+      tau.est[[n]]      <- matrix(NA, length(x), Msim)
 
       Ia <- Sys.time()
       for(m in 1:Msim){
         # Generate a sample and the residuals
-        Y = SignalPlusNoise(N, x = x,
-                            mu = mu_model,
-                            noise = noise_model,
-                            sigma = sigma_model)
+        Y = model(N,  x = x)
+
         Y = Y$values
         R = (Y - rowMeans(Y)) / sigma_model(x)
 
         # Estimate the mean and sd
         mY  = rowMeans(Y)
-        sdY = apply(Y, 1, sd)
+
+        if(is.null(sd_model)){
+          sdY = apply(Y, 1, sd)
+        }else{
+          sdY = sd_model(x)
+        }
 
         # Estimate tau
-        tau = tau_est(R, x)
+        tau = q.method$tau.est(R, x)
+
+        # Change the tau function to the estimate from the sample
+        q.method.Y$tau.est = tau
 
         # Get the confidence band
-        u = fairEEC_z(alpha, knots, tau = tau)
+        SCB = fairSCB(alpha, hatmu = mY, hatrho = sdY, tN = 1/sqrt(N),
+                      x = x, q.method = q.method.Y, mu = mu_model(x))
 
         #-------------------------------------------------------------------------------
         # Get the coverage of the band
-        cov_locs = abs(mu_model(x) - mY) <= u$u(x)*sigma_model(x)*tN
-        global.cov[[n]][m] <- all(cov_locs)
+        global.cov[[n]][m] <- SCB$glob.cov
 
         local.cov[[n]][,m] <- unlist(lapply(subI, function(l){
-          all(cov_locs[l])
+          all(SCB$loc.cov[l])
         } ))
-
+        # Save other interesting quantities
+        quantile.est[[n]][,m] <- SCB$q
+        tau.est[[n]][,m]      <- tau(x)
       }
       Ie <- Sys.time()
       Timing[n] <- Ie - Ia
-
     }
 
+    #---------------------------------------------------------------------------
+    # Create a list with the results
+    cov.res <- vapply(1:length(local.cov), function(l)
+                      rowMeans(local.cov[[l]]),
+                      FUN.VALUE = seq(0, 1, length.out = q.method$Nknots))
 
-    loc.cov.res <- vapply(1:length(local.cov), function(l)
-      rowMeans(local.cov[[l]]), FUN.VALUE = seq(0, 1, length.out = Nknots))
+    cov.res <- rbind(cov.res, vapply(1:length(local.cov), function(l)
+                     mean(global.cov[[l]]), FUN.VALUE = 1))
 
-    loc.cov.res <- rbind(loc.cov.res, vapply(1:length(local.cov), function(l)
-      mean(global.cov[[l]]), FUN.VALUE = 1))
+    cov.res.sd <- vapply(1:length(local.cov), function(l)
+                          sqrt(matrixStats::rowVars(1*local.cov[[l]])),
+                          FUN.VALUE = seq(0, 1, length.out = q.method$Nknots))
 
-    rownames(loc.cov.res) <- c(1:Nknots, "global")
-    colnames(loc.cov.res) <- Nvec
+    cov.res.sd <- rbind(cov.res.sd, vapply(1:length(local.cov), function(l)
+                         sd(1*global.cov[[l]]), FUN.VALUE = 1))
+
+    rownames(cov.res) <- rownames(cov.res.sd) <- c(1:q.method$Nknots, "global")
+    colnames(cov.res) <- colnames(cov.res.sd) <- Nvec
+
+    return(list(coverage = cov.res,
+             coverage.sd = cov.res.sd,
+             local.cov   = local.cov,
+             quantiles   = quantile.est,
+             tau         = tau.est,
+             time        = Timing,
+             simSD       = sqrt(alpha*(1-alpha)/Msim)))
 }
