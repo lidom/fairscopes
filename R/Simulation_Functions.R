@@ -191,11 +191,8 @@ sim_SCBs <- function(Msim, NVec = c(20, 50, 100, 200),
 
       Ia <- Sys.time()
       for(m in 1:Msim){
-        # Generate a sample and the residuals
-        Y = model(N,  x = x)
-
-        Y = Y$values
-        R = (Y - rowMeans(Y)) / sigma_model(x)
+        # Generate a sample
+        Y = model(N,  x = x)$values
 
         # Estimate the mean and sd
         mY  = rowMeans(Y)
@@ -203,8 +200,12 @@ sim_SCBs <- function(Msim, NVec = c(20, 50, 100, 200),
         if(is.null(sd_model)){
           sdY = apply(Y, 1, sd)
         }else{
-          sdY = sd_model(x)
+          sdY = sd_model(x = x)
         }
+
+        # Generate residuals
+
+        R = (Y - rowMeans(Y)) / sdY
 
         # Estimate tau
         tau = q.method$tau.est(R, x)
@@ -238,7 +239,7 @@ sim_SCBs <- function(Msim, NVec = c(20, 50, 100, 200),
     #---------------------------------------------------------------------------
     # Create a list with the results
     na.sims <- vapply(1:length(local.cov), function(l)
-                      mean(is.na(local.cov[[l]][1,], na.rm = TRUE)),
+                      sum(is.na(local.cov[[l]][1,])),
                       FUN.VALUE = 0.1)
     cov.res <- vapply(1:length(local.cov), function(l)
                       rowMeans(local.cov[[l]], na.rm = TRUE),
@@ -248,7 +249,7 @@ sim_SCBs <- function(Msim, NVec = c(20, 50, 100, 200),
                      mean(global.cov[[l]], na.rm = TRUE), FUN.VALUE = 1))
 
     cov.res.sd <- vapply(1:length(local.cov), function(l)
-                          sqrt(matrixStats::rowVars(1*local.cov[[l]]), na.rm = TRUE),
+                          sqrt(matrixStats::rowVars(1*local.cov[[l]], na.rm = TRUE)),
                           FUN.VALUE = seq(0, 1, length.out = q.method$Nknots))
 
     cov.res.sd <- rbind(cov.res.sd, vapply(1:length(local.cov), function(l)
