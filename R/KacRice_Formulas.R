@@ -75,14 +75,18 @@ fair_quantile_EEC_t <- function(alpha, df = NULL, knots, tau, sigma = 1,
   # Initialize the u function
   alpha_k = alpha
   ufcns  <- Alg1_gKR_t(alpha = alpha_k, df = df, knots = knots,
-                   tau = tau, sigma = sigma, I_weights = I_weights)
+                       tau = tau, sigma = sigma, I_weights = I_weights)
 
-  diff <- GeneralKacRice_t(tau = tau, u = ufcns$u, du = ufcns$du,
-                        df = df, x = range(knots),
-                         crossings = "up", t0 = 1) - alpha
+  diff <- GeneralKacRice_t(tau = tau,
+                           u   = ufcns$u,
+                           du  = ufcns$du,
+                           df  = df,
+                           x   = range(knots),
+                           crossings = "up",
+                           t0  = 1) - alpha
 
   niter   = 0
-  if(abs(diff) > tol){
+  if(abs(diff) > tol & maxIter != 0){
 
     alpha_k = alpha_up
     ufcns  <- Alg1_gKR_t(alpha = alpha_k, df = df, knots = knots,
@@ -112,6 +116,8 @@ fair_quantile_EEC_t <- function(alpha, df = NULL, knots, tau, sigma = 1,
         niter = niter + 1
       }
     }
+  }else{
+
   }
   return(list(u = ufcns$u, du = ufcns$du, alpha_loc = alpha_k*I_weights, niter = niter))
 }

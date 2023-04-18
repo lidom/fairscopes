@@ -213,19 +213,23 @@ sim_SCBs <- function(Msim, NVec = c(20, 50, 100, 200),
         q.method.Y$tau.est = tau
 
         # Get the confidence band
-        SCB = fairSCB(alpha, hatmu = mY, hatrho = sdY, tN = 1/sqrt(N),
-                      x = x, q.method = q.method.Y, mu = mu_model(x))
+        flag = T
+        tryCatch(SCB <- fairSCB(alpha, hatmu = mY, hatrho = sdY, tN = 1/sqrt(N),
+                               x = x, q.method = q.method.Y, mu = mu_model(x)),
+                 error = function(e){flag <<- F})
 
         #-------------------------------------------------------------------------------
         # Get the coverage of the band
-        global.cov[[n]][m] <- SCB$glob.cov
+        if(flag){
+          global.cov[[n]][m] <- SCB$glob.cov
 
-        local.cov[[n]][,m] <- unlist(lapply(subI, function(l){
-          all(SCB$loc.cov[l])
-        } ))
-        # Save other interesting quantities
-        quantile.est[[n]][,m] <- SCB$q
-        tau.est[[n]][,m]      <- tau(x)
+          local.cov[[n]][,m] <- unlist(lapply(subI, function(l){
+            all(SCB$loc.cov[l])
+          } ))
+          # Save other interesting quantities
+          quantile.est[[n]][,m] <- SCB$q
+          tau.est[[n]][,m]      <- tau(x)
+        }
       }
       Ie <- Sys.time()
       Timing[n] <- Ie - Ia
@@ -233,19 +237,22 @@ sim_SCBs <- function(Msim, NVec = c(20, 50, 100, 200),
 
     #---------------------------------------------------------------------------
     # Create a list with the results
+    na.sims <- vapply(1:length(local.cov), function(l)
+                      mean(is.na(local.cov[[l]][1,], na.rm = TRUE)),
+                      FUN.VALUE = 0.1)
     cov.res <- vapply(1:length(local.cov), function(l)
-                      rowMeans(local.cov[[l]]),
+                      rowMeans(local.cov[[l]], na.rm = TRUE),
                       FUN.VALUE = seq(0, 1, length.out = q.method$Nknots))
 
     cov.res <- rbind(cov.res, vapply(1:length(local.cov), function(l)
-                     mean(global.cov[[l]]), FUN.VALUE = 1))
+                     mean(global.cov[[l]], na.rm = TRUE), FUN.VALUE = 1))
 
     cov.res.sd <- vapply(1:length(local.cov), function(l)
-                          sqrt(matrixStats::rowVars(1*local.cov[[l]])),
+                          sqrt(matrixStats::rowVars(1*local.cov[[l]]), na.rm = TRUE),
                           FUN.VALUE = seq(0, 1, length.out = q.method$Nknots))
 
     cov.res.sd <- rbind(cov.res.sd, vapply(1:length(local.cov), function(l)
-                         sd(1*global.cov[[l]]), FUN.VALUE = 1))
+                         sd(1*global.cov[[l]], na.rm = TRUE), FUN.VALUE = 1))
 
     rownames(cov.res) <- rownames(cov.res.sd) <- c(1:q.method$Nknots, "global")
     colnames(cov.res) <- colnames(cov.res.sd) <- Nvec
@@ -253,6 +260,7 @@ sim_SCBs <- function(Msim, NVec = c(20, 50, 100, 200),
     return(list(coverage = cov.res,
              coverage.sd = cov.res.sd,
              local.cov   = local.cov,
+             na.sims     = na.sims,
              quantiles   = quantile.est,
              tau         = tau.est,
              time        = Timing,

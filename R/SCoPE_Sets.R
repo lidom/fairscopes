@@ -388,10 +388,13 @@ fairSCB <- function(alpha, hatmu, hatrho, tN,
     }
 
   }else if(q.method$name == "gKR_t"){
-    q = fair_quantile_EEC_t(alpha, df = q.method$df, knots = q.method$knots,
-                            q.method$tau, I_weights = q.method$I_weights,
-                            alpha_up = q.method$alpha_up,
-                            maxIter  = q.method$maxIter,
+    q = fair_quantile_EEC_t(alpha/2,
+                            df = q.method$df,
+                            knots = q.method$knots,
+                            tau  = q.method$tau,
+                            I_weights = q.method$I_weights,
+                            alpha_up  = q.method$alpha_up,
+                            maxIter   = q.method$maxIter,
                             tol = alpha / 100)$u
     q = q(x)
   }else if(q.method$name == "gauss.iid"){
