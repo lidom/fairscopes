@@ -9,9 +9,12 @@
 # Contained functions:
 #      - Fair_quantile_boot()
 #      - Optimize_Fair_quantile_boot()
-#      - Alg1_gKR_t()
-#      - Alg1_gKR_const()
-#      - Alg1_z_DL()
+#      - fair_Bootstrap()
+#      - fair_quantile_boot()
+#      - alg1_gKR_t()
+#      - alg1_gKR_const()
+#      - fair_quantile_EEC_t()
+#      - alg1_z_DL()
 #------------------------------------------------------------------------------#
 # Developer notes:
 #
@@ -39,12 +42,16 @@
 #'   thresholding function with respect to the sample.
 #' }
 #' @export
-Fair_quantile_boot <- function(samples, x, fair.intervals,
-                            fair.type = "linear",
-                            crit.set,
-                            alpha = 0.05,
-                            diff.fair = NULL,
-                            subI = NULL, inter = NULL ){
+Fair_quantile_boot <- function(samples,
+                               x,
+                               fair.intervals,
+                               fair.type = "linear",
+                               crit.set  = list(minus = rep(T, length(x)),
+                                                plus  = rep(T, length(x))),
+                               alpha     = 0.05,
+                               diff.fair = NULL,
+                               subI      = NULL,
+                               inter     = NULL ){
   #
   if(is.null(subI) || is.null(inter)){
     s = sub.intervals(x, fair.intervals, crit.set)
@@ -234,7 +241,7 @@ Optimize_Fair_quantile_boot <- function(samples,
                          crit.set  = crit.set,
                          alpha     = alpha,
                          diff.fair = diff.fair,
-                         subI = subI, inter = inter )
+                         subI = subI, inter = inter)
 
   # Initialize values for computing the fair threshold function
   count = 0
@@ -244,6 +251,7 @@ Optimize_Fair_quantile_boot <- function(samples,
   alpha_new = alpha
 
   # Loop to remove conservativeness of the fair threshold function
+  # using nested intervals
   while(breakCond == FALSE && count < niter){
     diffCoverage = oldEmp - alpha
     if( abs(diffCoverage) > eps ){
@@ -272,13 +280,14 @@ Optimize_Fair_quantile_boot <- function(samples,
 
       # Get new quantile function
       test   = Fair_quantile_boot(samples = samples,
-                               x = x,
-                               fair.intervals = fair.intervals,
-                               fair.type = fair.type,
-                               crit.set  = crit.set,
-                               alpha     = alpha_new,
-                               diff.fair = diff.fair,
-                               subI = subI, inter = inter )
+                                  x = x,
+                                  fair.intervals = fair.intervals,
+                                  fair.type = fair.type,
+                                  crit.set  = crit.set,
+                                  alpha     = alpha_new,
+                                  diff.fair = diff.fair,
+                                  subI  = subI,
+                                  inter = inter )
       count  = count + 1
       oldEmp = test$EmpRejections$global
       if(print.coverage){
@@ -293,11 +302,235 @@ Optimize_Fair_quantile_boot <- function(samples,
   return(test)
 }
 
+
+#' Estimates from a sample of random functions (for example a bootstrap sample)
+#' a Fair thresholding function q
+#'
+#' @param sample array of dimension K x N containing N-realizations of
+#'  a random field over a 1-dimensional domain.
+#' @param x vector of length K of locations at which the sample is observed.
+#' @param alpha numeric the targeted upper quantile of the maxiumum of the
+#'   absolute value of the random field. Default is 0.95.
+#' @param fair a vector partitioning the vector x into regions on which the
+#'             on which the rejection should be fair. First element must be
+#'             x[1] and last x[length(x)]
+#' @return list with elements
+#'  \itemize{
+#'   \item q Vector containing the fair piecewise linear thresholding function at each x
+#'   \item qm Vector containing the offset and the slopes of the fair thresholding function
+#'   \item EmpRejections Numeric giving the empirical rejection rate of the fair
+#'   thresholding function with respect to the sample.
+#' }
+#' @export
+fair_Bootstrap <- function(alpha,
+                           samples,
+                           x,
+                           knots,
+                           type = "linear",
+                           crit.set  = list(minus = rep(T, length(x)),
+                                            plus  = rep(T, length(x))),
+                           I_weights = rep(1/(length(knots) - 1), length(knots) - 1),
+                           subI      = NULL,
+                           inter     = NULL ){
+  #
+  if(is.null(subI) || is.null(inter)){
+    s     = sub.intervals(x, knots, crit.set)
+    subI  = s$subI
+    inter = s$inter
+  }
+
+  # Simplify notation
+  Sminus = crit.set$minus
+  Splus  = crit.set$plus
+
+  # Spread the parts where no probability is expected fairly
+  # to the other partitions
+  if(!all(inter)){
+    I_weights = I_weights + sum(I_weights[!inter]) / sum(inter)
+    I_weights[!inter] = 0
+  }
+
+  dimS = dim(samples)
+  #  if(fair.type = "linear"){
+  samples_minus = -samples
+  samples_minus[!Sminus,] <- -Inf
+  samples_plus = samples
+  samples_plus[!Splus,]   <- -Inf
+  #}
+
+  subI_prob <- function(k, q){
+    if(is.null(Sminus)){
+      low.excursion = rep(FALSE, dim(samples)[2])
+    }else{
+      ind_minus     = intersect(which(Sminus), subI[[k]])
+      if(length(ind_minus) == 0){
+        low.excursion = rep(FALSE, dim(samples)[2])
+      }else if(length(ind_minus) == 1){
+        low.excursion = -samples[ind_minus,] - q[ind_minus] >= 0
+      }else{
+        low.excursion = apply(-samples[ind_minus,] - q[ind_minus], 2, max) >= 0
+      }
+    }
+
+    if(is.null(Splus)){
+      up.excursion = rep(FALSE, dim(samples)[2])
+    }else{
+      ind_plus     = intersect(which(Splus), subI[[k]])
+      if(length(ind_plus) == 0){
+        up.excursion = rep(FALSE, dim(samples)[2])
+      }else if(length(ind_plus) == 1){
+        up.excursion = samples[ind_plus,] - q[ind_plus] >= 0
+      }else{
+        up.excursion = apply(samples[ind_plus,] - q[ind_plus], 2, max) >= 0      }
+    }
+
+    mean(apply(cbind(low.excursion, up.excursion), 1, any))
+  }
+
+  # initialize the quantile piecewise linear function
+  q0 = -Inf
+  q  = rep(-Inf, length(x))
+
+  # Get the indices of the partitions which are used
+  # to control the limit distribution
+  Ik = c(which(inter), -Inf)
+
+  # iterate over the different intervals
+  for(k in 1:length(Ik[-length(Ik)])){
+    # find indices within the k-th interval
+    subIk = subI[[Ik[k]]]
+
+    if(q0 == -Inf){
+      # Get the local test statistic
+      maxIk = apply(rbind(apply(samples_minus[subIk,], 2, max),
+                          apply(samples_plus[subIk,], 2, max)), 2, max)
+
+      # Initialize the piecewise linear function
+      mq = quantile( maxIk, 1 - alpha*I_weights[Ik[k]], type = 8 )
+
+      q[subIk] = mq
+
+      # Get back into this loop if type is not linear
+      if(type == "constant" || Ik[k]+1 != Ik[k+1]){
+        q0 = -Inf
+      }else{
+        q0 = mq
+      }
+    }else{
+      # define the function, which finds the optimal slope for the correct rejection rate
+      solvef <- function(l){
+        qq = q
+        qq[subIk] = q0 - l * (x[subIk] - x[subIk[1]-1])
+
+        return(subI_prob(Ik[k], qq) - alpha*I_weights[Ik[k]])
+      }
+      qk <- uniroot(solvef, interval = c(-500, 500))
+
+      q[subIk] = q0 - qk$root * (x[subIk] - x[subIk[1]-1])
+
+      # Get back into this loop if type is not linear
+      if(type == "constant" || Ik[k]+1 != Ik[k+1]){
+        q0 = -Inf
+      }else{
+        q0 = q[subIk[length(subIk)]]
+      }
+    }
+  }
+
+  # Interval counter to later fill not important intervals
+  if(any(is.infinite(q))){
+    q[is.infinite(q)] = NA
+  }
+
+  # Get the linear function corresponding to the estimated values
+  qq = approxfun(x, q, rule = 2, na.rm = TRUE)
+
+  EmpRejections = IntervalProb(qq(x), crit.set, samples, x, knots, subI = subI)
+
+  # return the results
+  return(list(u = qq, mu = mq, EmpRejections = EmpRejections))
+}
+
+
+#' This functions computes the SCoPES corresponding to an estimator and a set
+#' of functions given as a matrix with columns being the cut-off functions.
+#'
+#' @inheritParams SCoPES
+#' @return Standard error under the assumption the data is Gaussian
+#' @export
+fair_quantile_boot <- function(alpha, df = NULL, knots, samples, sigma = 1,
+                                I_weights = rep(1/(length(knots) - 1), length(knots) - 1),
+                                alpha_up  = alpha*(length(knots) - 1),
+                                maxIter = 20,
+                                tol     = alpha / 100,
+                                subI    = NULL,
+                                inter   = NULL){
+  # Get the interval
+  if(is.null(subI) || is.null(inter)){
+    s     = sub.intervals(x, knots, crit.set)
+    subI  = s$subI
+    inter = s$inter
+  }
+
+  # Spread the parts where no probability is expected fairly
+  # to the other partitions
+  if(!all(inter)){
+    I_weights = I_weights + sum(I_weights[!inter]) / sum(inter)
+    I_weights[!inter] = 0
+  }
+
+  # Initialize the u function
+  alpha_k = alpha
+  ufcns  <- fair_Bootstrap(alpha = alpha_k, df = df, knots = knots,
+                           samples = samples, sigma = sigma,
+                           I_weights = I_weights,
+                           subI = subI, inter = inter)
+
+  diff <- ufcns$EmpRejections$global - alpha
+
+  niter   = 0
+  if(abs(diff) > tol & maxIter != 0){
+
+    alpha_k = alpha_up
+    ufcns  <- fair_Bootstrap(alpha = alpha_k, df = df, knots = knots,
+                             samples = samples, sigma = sigma,
+                             I_weights = I_weights,
+                             subI = subI, inter = inter)
+
+    diff <- ufcns$EmpRejections$global - alpha
+
+    if(abs(diff) > tol){
+      a = c(alpha, alpha_up)
+
+      while(niter < maxIter & abs(diff) > tol){
+        alpha_k = a[1]*0.6 + a[2]*0.4
+        ufcns <- fair_Bootstrap(alpha = alpha_k, df = df, knots = knots,
+                                samples = samples, sigma = sigma,
+                                I_weights = I_weights,
+                                subI = subI, inter = inter)
+
+        diff <- ufcns$EmpRejections$global - alpha
+
+        if(diff < 0){
+          a[1] = alpha_k
+        }else{
+          a[2] = alpha_k
+        }
+        niter = niter + 1
+      }
+    }
+  }
+
+  return(list(u = ufcns$u, du = ufcns$du, alpha_loc = alpha_k*I_weights, niter = niter))
+}
+
+
 #-------------------------------------------------------------------------------
 # Kac Rice Algorithms
 #-------------------------------------------------------------------------------
 #' Find an optimal piecewise linear quantile function q to remove
-#' conservativeness of standard Kac Rice formula approaches.
+#' conservativeness of standard Kac Rice formula approach for fair
+#' thresholds.
 #'
 #' @param sample add
 #' @return list with elements
@@ -308,7 +541,7 @@ Optimize_Fair_quantile_boot <- function(samples,
 #'   thresholding function with respect to the sample.
 #' }
 #' @export
-Alg1_gKR_t <- function(alpha, knots, tau, df = NULL, sigma = 1,
+alg1_gKR_t <- function(alpha, knots, tau, df = NULL, sigma = 1,
                        I_weights = rep(1/(length(knots) - 1), length(knots) - 1)){
   # Get the amount of Intervals
   K <- length(I_weights)
@@ -407,7 +640,6 @@ Alg1_gKR_t <- function(alpha, knots, tau, df = NULL, sigma = 1,
 
   return(list(u = function(t){ ufun(t, c_v = coeffs, knots = knots) },
               du = function(t){ dufun(t, c_v = u_fun[2,], knots = knots) }, c_v =coeffs))
-  #  return(list(c_v = c_v, u = u_fun))
 }
 
 
@@ -423,7 +655,7 @@ Alg1_gKR_t <- function(alpha, knots, tau, df = NULL, sigma = 1,
 #'   thresholding function with respect to the sample.
 #' }
 #' @export
-Alg1_gKR_const <- function(alpha, knots, tau, df = NULL, sigma = 1,
+alg1_gKR_const <- function(alpha, knots, tau, df = NULL, sigma = 1,
                          I_weights = rep(1/(length(knots) - 1), length(knots) - 1)){
   # Get the amount of Intervals
   K <- length(I_weights)
@@ -456,11 +688,71 @@ Alg1_gKR_const <- function(alpha, knots, tau, df = NULL, sigma = 1,
 
   return(list( u = function(t){  ufun(t, c_v = u_fun, knots = knots) },
                du = function(t){ dufun(t, c_v = rep(0,K), knots = knots) }))
-  #  return(list(c_v = c_v, u = u_fun))
 }
 
 
-#' Dominiks implementation to find a Fair band for .
+#' This functions computes the SCoPES corresponding to an estimator and a set
+#' of functions given as a matrix with columns being the cut-off functions.
+#'
+#' @inheritParams SCoPES
+#' @return Standard error under the assumption the data is Gaussian
+#' @export
+fair_quantile_EEC_t <- function(alpha, df = NULL, knots, tau, sigma = 1,
+                                I_weights = rep(1/(length(knots) - 1), length(knots) - 1),
+                                alpha_up = alpha*(length(knots)-1), maxIter = 20,
+                                tol = alpha / 100){
+  # Initialize the u function
+  alpha_k = alpha
+  ufcns  <- alg1_gKR_t(alpha = alpha_k, df = df, knots = knots,
+                       tau = tau, sigma = sigma, I_weights = I_weights)
+
+  diff <- GeneralKacRice_t(tau = tau,
+                           u   = ufcns$u,
+                           du  = ufcns$du,
+                           df  = df,
+                           x   = range(knots),
+                           crossings = "up",
+                           t0  = 1) - alpha
+
+  niter   = 0
+  if(abs(diff) > tol & maxIter != 0){
+
+    alpha_k = alpha_up
+    ufcns  <- alg1_gKR_t(alpha = alpha_k, df = df, knots = knots,
+                         tau = tau, sigma = sigma, I_weights = I_weights)
+
+    diff <- GeneralKacRice_t(tau = tau, u = ufcns$u, du = ufcns$du,
+                             df = df, x = range(knots),
+                             crossings = "up", t0 = 1) - alpha
+
+    if(abs(diff) > tol){
+      a = c(alpha, alpha_up)
+
+      while(niter < maxIter & abs(diff) > tol){
+        alpha_k = a[1]*0.6 + a[2]*0.4
+        ufcns <- alg1_gKR_t(alpha = alpha_k, df = df, knots = knots,
+                            tau = tau, sigma = sigma, I_weights = I_weights)
+
+        diff <- GeneralKacRice_t(tau = tau, u = ufcns$u, du = ufcns$du,
+                                 df = df, x = range(knots),
+                                 crossings = "up", t0 = 1) - alpha
+
+        if(diff < 0){
+          a[1] = alpha_k
+        }else{
+          a[2] = alpha_k
+        }
+        niter = niter + 1
+      }
+    }
+  }else{
+
+  }
+  return(list(u = ufcns$u, du = ufcns$du, alpha_loc = alpha_k*I_weights, niter = niter))
+}
+
+#' This function is only here for comparison with the implementation of
+#' D Liebl. It is essentially copied from the ffscb package.
 #'
 #' @param sample add
 #' @return list with elements
@@ -471,7 +763,7 @@ Alg1_gKR_const <- function(alpha, knots, tau, df = NULL, sigma = 1,
 #'   thresholding function with respect to the sample.
 #' }
 #' @export
-Alg1_z_DL <- function (tau, diag.cov, conf.level = 0.95, n_int = 4){
+alg1_z_DL <- function (tau, diag.cov, conf.level = 0.95, n_int = 4){
   tol <- .Machine$double.eps^0.35
   alpha <- 1 - conf.level
   tt <- seq(0, 1, len = length(tau))
