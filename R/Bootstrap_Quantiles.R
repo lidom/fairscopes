@@ -8,7 +8,7 @@
 #      - matrixStats
 #
 # Contained functions:
-#      - MultiplierBootstrapSplit (tested)
+#      - MultiplierBootstrapSplit
 #
 #------------------------------------------------------------------------------#
 # Developer notes:
