@@ -207,7 +207,30 @@ SCoPES <- function(alpha, C, x = seq(0, 1, length.out = length(hatmu)),
       fair.q = NULL
       q = rep(0, length(x))
     }
-
+  }else if(q.method$name == "fair.mboot2"){
+    samples = MultiplierBootstrapSplit(alpha   = alpha,
+                                       R       = q.method$R,
+                                       minus   = hatmu1C$minus,
+                                       plus    = hatmu1C$plus,
+                                       Mboots  = q.method$Mboots,
+                                       method  = q.method$Boottype,
+                                       weights = q.method$weights)$samples
+    if( !(all(!hatmu1C$minus) && all(!hatmu1C$plus)) ){
+      fair.q = fair_quantile_boot(alpha,
+                                  x = x,
+                                  samples = samples,
+                                  crit.set  = hatmu1C,
+                                  knots = q.method$fair.intervals,
+                                  I_weights = rep(1/(length(q.method$fair.intervals) - 1), length(q.method$fair.intervals) - 1),
+                                  type      = q.method$qshape,
+                                  alpha_up  = alpha*(length(q.method$fair.intervals) - 1),
+                                  maxIter = q.method$fair.niter,
+                                  tol     = alpha / 100)
+        q = fair.q$u(x)
+      }else{
+          fair.q = NULL
+          q = rep(0, length(x))
+      }
   }else if(q.method$name == "gauss.iid"){
     q = maxGauss_quantile(p = 1 - alpha, muC = hatmu1C)
   }else if(q.method$name == "t.iid"){

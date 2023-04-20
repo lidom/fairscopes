@@ -325,11 +325,11 @@ Optimize_Fair_quantile_boot <- function(samples,
 fair_Bootstrap <- function(alpha,
                            samples,
                            x,
-                           knots,
-                           type = "linear",
                            crit.set  = list(minus = rep(T, length(x)),
                                             plus  = rep(T, length(x))),
+                           knots     = range(x),
                            I_weights = rep(1/(length(knots) - 1), length(knots) - 1),
+                           type      = "linear",
                            subI      = NULL,
                            inter     = NULL ){
   #
@@ -458,13 +458,17 @@ fair_Bootstrap <- function(alpha,
 #' @inheritParams SCoPES
 #' @return Standard error under the assumption the data is Gaussian
 #' @export
-fair_quantile_boot <- function(alpha, df = NULL, knots, samples, sigma = 1,
-                                I_weights = rep(1/(length(knots) - 1), length(knots) - 1),
-                                alpha_up  = alpha*(length(knots) - 1),
-                                maxIter = 20,
-                                tol     = alpha / 100,
-                                subI    = NULL,
-                                inter   = NULL){
+fair_quantile_boot <- function(alpha, x, samples,
+                               crit.set  = list(minus = rep(T, length(X)),
+                                                plus  = rep(T, length(X))),
+                               knots     = range(x),
+                               I_weights = rep(1/(length(knots) - 1), length(knots) - 1),
+                               type      = "linear",
+                               alpha_up  = alpha*(length(knots) - 1),
+                               maxIter = 20,
+                               tol     = alpha / 100,
+                               subI    = NULL,
+                               inter   = NULL){
   # Get the interval
   if(is.null(subI) || is.null(inter)){
     s     = sub.intervals(x, knots, crit.set)
@@ -481,33 +485,25 @@ fair_quantile_boot <- function(alpha, df = NULL, knots, samples, sigma = 1,
 
   # Initialize the u function
   alpha_k = alpha
-  ufcns  <- fair_Bootstrap(alpha = alpha_k, df = df, knots = knots,
-                           samples = samples, sigma = sigma,
+  ufcns  <- fair_Bootstrap(alpha     = alpha_k, x = x, samples = samples,
+                           crit.set  = crit.set,
+                           knots     = knots,
                            I_weights = I_weights,
-                           subI = subI, inter = inter)
+                           type      = type, subI = subI, inter = inter)
 
   diff <- ufcns$EmpRejections$global - alpha
 
   niter   = 0
-  if(abs(diff) > tol & maxIter != 0){
-
-    alpha_k = alpha_up
-    ufcns  <- fair_Bootstrap(alpha = alpha_k, df = df, knots = knots,
-                             samples = samples, sigma = sigma,
-                             I_weights = I_weights,
-                             subI = subI, inter = inter)
-
-    diff <- ufcns$EmpRejections$global - alpha
-
-    if(abs(diff) > tol){
+  if(maxIter != 0){
       a = c(alpha, alpha_up)
 
       while(niter < maxIter & abs(diff) > tol){
-        alpha_k = a[1]*0.6 + a[2]*0.4
-        ufcns <- fair_Bootstrap(alpha = alpha_k, df = df, knots = knots,
-                                samples = samples, sigma = sigma,
+        alpha_k = a[1]*0.8 + a[2]*0.2
+        ufcns <- fair_Bootstrap(alpha     = alpha_k, x = x, samples = samples,
+                                crit.set  = crit.set,
+                                knots     = knots,
                                 I_weights = I_weights,
-                                subI = subI, inter = inter)
+                                type      = type, subI = subI, inter = inter)
 
         diff <- ufcns$EmpRejections$global - alpha
 
@@ -517,8 +513,10 @@ fair_quantile_boot <- function(alpha, df = NULL, knots, samples, sigma = 1,
           a[2] = alpha_k
         }
         niter = niter + 1
+        print(diff)
+        print(niter)
+        print(a)
       }
-    }
   }
 
   return(list(u = ufcns$u, du = ufcns$du, alpha_loc = alpha_k*I_weights, niter = niter))
@@ -697,14 +695,18 @@ alg1_gKR_const <- function(alpha, knots, tau, df = NULL, sigma = 1,
 #' @inheritParams SCoPES
 #' @return Standard error under the assumption the data is Gaussian
 #' @export
-fair_quantile_EEC_t <- function(alpha, df = NULL, knots, tau, sigma = 1,
+fair_quantile_EEC_t <- function(alpha, tau, x = seq(0,1,length.out=2), df = NULL,
+                                knots     = range(x),
                                 I_weights = rep(1/(length(knots) - 1), length(knots) - 1),
-                                alpha_up = alpha*(length(knots)-1), maxIter = 20,
-                                tol = alpha / 100){
+                                sigma     = 1,
+                                alpha_up  = alpha*(length(knots)-1),
+                                maxIter   = 20,
+                                tol       = alpha / 100){
   # Initialize the u function
   alpha_k = alpha
-  ufcns  <- alg1_gKR_t(alpha = alpha_k, df = df, knots = knots,
-                       tau = tau, sigma = sigma, I_weights = I_weights)
+  ufcns  <- alg1_gKR_t(alpha = alpha_k, tau = tau, df = df,
+                       knots = knots, I_weights = I_weights,
+                       sigma = sigma)
 
   diff <- GeneralKacRice_t(tau = tau,
                            u   = ufcns$u,
@@ -718,8 +720,8 @@ fair_quantile_EEC_t <- function(alpha, df = NULL, knots, tau, sigma = 1,
   if(abs(diff) > tol & maxIter != 0){
 
     alpha_k = alpha_up
-    ufcns  <- alg1_gKR_t(alpha = alpha_k, df = df, knots = knots,
-                         tau = tau, sigma = sigma, I_weights = I_weights)
+    ufcns  <- alg1_gKR_t(alpha = alpha_k, df = df, knots = knots, I_weights = I_weights,
+                         tau = tau, sigma = sigma)
 
     diff <- GeneralKacRice_t(tau = tau, u = ufcns$u, du = ufcns$du,
                              df = df, x = range(knots),
