@@ -133,7 +133,57 @@ sub.intervals <- function(x, fair.intervals, crit.set){
 
   } ))
 
+  # Get the connected components of the critical sets
+  crits      = which(crit.set$minus)
+  cut_points = which(diff(crits) != 1)
+  cc.minus   = list()
+  if(!identical(cut_points, integer(0))){
+
+  }else{
+    cc.minus[[1]] = crits
+  }
+
   list(subI = subI, inter = subI.cit)
+}
+
+#' This function computes from a boolean vector the indices of the connected
+#' components
+#'
+#' @param mask String name of the implemented method to
+#' estimate the quantile function
+#' @return A list containing for each entry the indices of the i-th
+#'         connected components
+#' @export
+get_cc <- function(mask){
+  ind_ccs    = which(mask)
+  cut_points = which(diff(ind_ccs) != 1)
+  ccs   = list()
+  if(!identical(cut_points, integer(0))){
+    cut_points = c(0, cut_points, length(ind_ccs))
+    for(l in 1:(length(cut_points)-1)){
+      ccs[[l]] = ind_ccs[(cut_points[l]+1):cut_points[l+1]]
+    }
+  }else{
+    ccs[[1]] = ind_ccs
+  }
+  return(ccs)
+}
+
+
+#' This function computes from a boolean vector the indices of the connected
+#' components
+#'
+#' @param mask String name of the implemented method to
+#' estimate the quantile function
+#' @return A list containing for each entry the indices of the i-th
+#'         connected components
+#' @export
+knots2indices <- function(knots, x){
+  inds = list()
+  for(l in 1:(length(knots)-1)){
+    inds[[l]] <- which(knots[l] <= x & x <= knots[l+1])
+  }
+  return(inds)
 }
 
 #' This function generates a list with the required input for different
