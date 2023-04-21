@@ -186,29 +186,6 @@ SCoPES <- function(alpha, C, x = seq(0, 1, length.out = length(hatmu)),
     }
   }else if(q.method$name == "fair.mboot"){
     samples = MultiplierBootstrapSplit(alpha   = alpha,
-                                 R       = q.method$R,
-                                 minus   = hatmu1C$minus,
-                                 plus    = hatmu1C$plus,
-                                 Mboots  = q.method$Mboots,
-                                 method  = q.method$Boottype,
-                                 weights = q.method$weights)$samples
-    if( !(all(!hatmu1C$minus) && all(!hatmu1C$plus)) ){
-      fair.q = Optimize_Fair_quantile_boot(samples,
-                                       x,
-                                       fair.intervals = q.method$fair.intervals,
-                                       fair.type = q.method$fair.type,
-                                       crit.set  = hatmu1C,
-                                       alpha  = alpha,
-                                       niter  = q.method$fair.niter,
-                                       subI   = NULL,
-                                       print.coverage = q.method$print.coverage )
-      q = fair.q$q
-    }else{
-      fair.q = NULL
-      q = rep(0, length(x))
-    }
-  }else if(q.method$name == "fair.mboot2"){
-    samples = MultiplierBootstrapSplit(alpha   = alpha,
                                        R       = q.method$R,
                                        minus   = hatmu1C$minus,
                                        plus    = hatmu1C$plus,
@@ -216,16 +193,14 @@ SCoPES <- function(alpha, C, x = seq(0, 1, length.out = length(hatmu)),
                                        method  = q.method$Boottype,
                                        weights = q.method$weights)$samples
     if( !(all(!hatmu1C$minus) && all(!hatmu1C$plus)) ){
-      fair.q = fair_quantile_boot(alpha,
-                                  x = x,
-                                  samples = samples,
+      fair.q = fair_quantile_boot(alpha, samples = samples, x = x,
                                   crit.set  = hatmu1C,
-                                  knots = q.method$fair.intervals,
+                                  knots     = q.method$fair.intervals,
                                   I_weights = rep(1/(length(q.method$fair.intervals) - 1), length(q.method$fair.intervals) - 1),
                                   type      = q.method$qshape,
                                   alpha_up  = alpha*(length(q.method$fair.intervals) - 1),
-                                  maxIter = q.method$fair.niter,
-                                  tol     = alpha / 100)
+                                  maxIter   = q.method$fair.niter,
+                                  tol       = alpha / 100)
         q = fair.q$u(x)
       }else{
           fair.q = NULL
@@ -367,19 +342,25 @@ plot_SCoPES <- function(scopes, index_C = c(1,1),
 #' @export
 fairSCB <- function(alpha, hatmu, hatrho, tN,
                     x = seq(0, 1, length.out = length(hatmu)),
-                    q.method, mu = NULL, subI = NULL){
+                    q.method, type = "two-sided", mu = NULL, subI = NULL){
 
   #---------------------------------------------------------------------------
   # Estimate the quantile funcion q.
-  hatmu1C = list(minus = rep(TRUE, length(hatmu)),
-                 plus  = rep(TRUE, length(hatmu)))
+  if(type == "two-sided"){
+    crit.set = list(minus = rep(TRUE, length(hatmu)),
+                    plus  = rep(TRUE, length(hatmu)))
+  }else{
+    crit.set = list(minus = rep(TRUE, length(hatmu)),
+                    plus  = rep(FALSE, length(hatmu)))
+  }
+
 
   fair.q = NULL
   if(q.method$name == "mboot"){
     q = MultiplierBootstrapSplit(alpha   = alpha,
                                  R       = q.method$R,
-                                 minus   = hatmu1C$minus,
-                                 plus    = hatmu1C$plus,
+                                 minus   = crit.set$minus,
+                                 plus    = crit.set$plus,
                                  Mboots  = q.method$Mboots,
                                  method  = q.method$Boottype,
                                  weights = q.method$weights)$q
@@ -389,17 +370,17 @@ fairSCB <- function(alpha, hatmu, hatrho, tN,
   }else if(q.method$name == "fair.mboot"){
     samples = MultiplierBootstrapSplit(alpha   = alpha,
                                        R       = q.method$R,
-                                       minus   = hatmu1C$minus,
-                                       plus    = hatmu1C$plus,
+                                       minus   = crit.set$minus,
+                                       plus    = crit.set$plus,
                                        Mboots  = q.method$Mboots,
                                        method  = q.method$Boottype,
                                        weights = q.method$weights)$samples
-    if( !(all(!hatmu1C$minus) && all(!hatmu1C$plus)) ){
+    if( !(all(!crit.set$minus) && all(!crit.set$plus)) ){
       fair.q = Optimize_Fair_quantile_boot(samples,
                                            x = x,
                                            fair.intervals = q.method$fair.intervals,
                                            fair.type = q.method$fair.type,
-                                           crit.set  = hatmu1C,
+                                           crit.set  = crit.set,
                                            alpha  = alpha,
                                            niter  = q.method$fair.niter,
                                            subI   = subI,
@@ -411,24 +392,29 @@ fairSCB <- function(alpha, hatmu, hatrho, tN,
     }
 
   }else if(q.method$name == "gKR_t"){
-    q = fair_quantile_EEC_t(alpha/2,
-                            df = q.method$df,
-                            knots = q.method$knots,
+    q = fair_quantile_EEC_t(alpha = alpha,
                             tau  = q.method$tau,
+                            x    = range(q.method$knots),
+                            df = q.method$df,
+                            crit.set  = crit.set,
+                            knots     = q.method$knots,
                             I_weights = q.method$I_weights,
+                            type      = "linear",
                             alpha_up  = q.method$alpha_up,
                             maxIter   = q.method$maxIter,
                             tol = alpha / 100)$u
     q = q(x)
-  }else if(q.method$name == "gauss.iid"){
-    q = maxGauss_quantile(p = 1 - alpha, muC = hatmu1C)
-  }else if(q.method$name == "t.iid"){
-    q = maxT_quantile(p = 1 - alpha, muC = hatmu1C, df = q.method$df)
   }
 
   SCB = cbind(hatmu - tN*hatrho*q, hatmu + q*tN*hatrho)
   rownames(SCB) <- x
   colnames(SCB) <- c("low", "up")
+
+  if(type == "low"){
+    SCB = SCB[, "low"]
+  }else if(type == "low"){
+    SCB = SCB[, "up"]
+  }
 
   # Output
   if(is.null(mu)){
@@ -436,6 +422,7 @@ fairSCB <- function(alpha, hatmu, hatrho, tN,
   }else{
     loc.cov = abs(mu - hatmu) <= q*tN*hatrho
 
+    # Note that the coverage only works for two-sided!
     return(list(SCB = cbind(hatmu - tN*hatrho*q, hatmu + tN*hatrho*q),
                 q = q,
                 loc.cov  = loc.cov,
