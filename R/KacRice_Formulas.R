@@ -47,26 +47,26 @@ GeneralKacRice_t <- function(tau, u, du, x, df = NULL,
     }
   }else{
     nup = df + 1
-    afun <- function(t){ sqrt(nu * tau(t)^2 * (1 + u(t)^2 / df) / nup)}
+    afun <- function(t){ sqrt(df * tau(t)^2 * (1 + u(t)^2 / df) / nup)}
 
     # Add here the functions for the t-Kac-Rice formula
     f0 <- function(t){
-        stats::pt(q = -u(t), df = df)
+        stats::pt(q = t, df = df)
     }
 
     f1 <- function(t){
-        tau(t) * (1 + u(t)^2 / df + u(t)^2/(df * tau_f(t)^2))^(-df / 2) / (2*pi)
+        tau(t) / (2*pi) * (1 + u(t)^2 / df + du(t)^2 / (df * tau(t)^2))^(-df / 2)
     }
 
     f2 <- function(t){
       du(t) / (2*pi*tau(t)) * (1 + u(t)^2 / df)^(-df/2 - 1)  *
-        gamma(nup/2) * sqrt(nup*pi) * afun(t) / gamma((nup + 1) / 2) *
+        gamma(nup/2) / gamma((nup + 1) / 2) * sqrt(nup*pi) * afun(t) *
         stats::pt(q = du(t) / afun(t), df = nup)
     }
 
     f3 <- function(t){
       du(t) / (2*pi*tau(t)) * (1 + u(t)^2 / df)^(-df/2 - 1)  *
-        gamma(nup/2) * sqrt(nup*pi) * afun(t) / gamma((nup + 1) / 2) *
+        gamma(nup/2) / gamma((nup + 1) / 2) * sqrt(nup*pi) * afun(t) *
         stats::pt(q = -du(t) / afun(t), df = nup)
     }
   }

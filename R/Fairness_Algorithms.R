@@ -108,55 +108,56 @@ fair_Bootstrap <- function(alpha, samples, x,
   # initialize the quantile piecewise linear function
   q0 = -Inf
   q  = rep(-Inf, length(x))
-
-  # Get the indices of the partitions which are used
-  # to control the limit distribution
-  Ik = c(which(inter), -Inf)
+  I_weights = c(I_weights, Inf)
 
   # iterate over the different intervals
-  for(k in 1:length(Ik[-length(Ik)])){
-    # find indices within the k-th interval
-    subIk = subI[[Ik[k]]]
+  for(k in 1:length(I_weights[-1])){
+    if(I_weights[k] != 0){
+      # find indices within the k-th interval
+      subIk = subI[[k]]
 
-    if(q0 == -Inf){
-      # Get the local test statistic
-      maxIk = apply(rbind(apply(samples_minus[subIk,], 2, max),
-                          apply(samples_plus[subIk,], 2, max)), 2, max)
+      if(q0 == -Inf){
+        # Get the local statistic
+        maxIk = apply(rbind(apply(samples_minus[subIk,], 2, max),
+                            apply(samples_plus[subIk,], 2, max)), 2, max)
 
-      # Initialize the piecewise linear function
-      mq = quantile( maxIk, 1 - alpha*I_weights[Ik[k]], type = 8 )
+        # Initialize the piecewise linear function
+        mq = quantile( maxIk, 1 - alpha*I_weights[k], type = 8 )
 
-      q[subIk] = mq
+        q[subIk] = mq
 
-      # Get back into this loop if type is not linear
-      if(type == "constant" || Ik[k]+1 != Ik[k+1]){
-        q0 = -Inf
+        # Get back into this loop if type is not linear
+        if(type == "constant" || I_weights[k+1] == 0){
+          q0 = -Inf
+        }else{
+          q0 = mq
+        }
       }else{
-        q0 = mq
-      }
-    }else{
-      # define the function, which finds the optimal slope for the correct rejection rate
-      solvef <- function(l){
-        qq = q
-        qq[subIk] = q0 - l * (x[subIk] - x[subIk[1]-1])
+        # define the function, which finds the optimal slope for the correct rejection rate
+        solvef <- function(l){
+          qq = q
+          qq[subIk] = q0 - l * (x[subIk] - x[subIk[1]-1])
 
-        return(subI_prob(Ik[k], qq) - alpha*I_weights[Ik[k]])
-      }
-      qk <- uniroot(solvef, interval = c(-500, 500))
+          return(subI_prob(k, qq) - alpha*I_weights[k])
+        }
+        qk <- uniroot(solvef, interval = c(-500, 500))
 
-      # make the linear function only on the critical set
-      ind = intersect(subIk, c(which(crit.set$minus), which(crit.set$plus)))
+        # make the linear function only on the critical set
+        ind = intersect(subIk, c(which(crit.set$minus), which(crit.set$plus)))
 
-      q[ind] = q0 - qk$root * (x[ind] - x[subIk[1]-1])
+        q[ind] = q0 - qk$root * (x[ind] - x[subIk[1]-1])
 
-      # Get back into this loop if type is not linear
-      if(type == "constant" || Ik[k]+1 != Ik[k+1]){
-        q0 = -Inf
-      }else{
-        q0 = q[subIk[length(subIk)]]
+        # Get back into this loop if type is not linear
+        if(type == "constant" || I_weights[k+1] == 0){
+          q0 = -Inf
+        }else{
+          q0 = q[subIk[length(subIk)]]
+        }
       }
     }
   }
+
+  I_weights = I_weights[-length(I_weights)]
 
   # Interval counter to later fill not important intervals
   if(any(is.infinite(q))){
@@ -214,15 +215,15 @@ fair_quantile_boot <- function(alpha, x, samples,
                            type      = type, subI = subI, inter = inter)
 
   diff <- ufcns$EmpRejections$global - alpha
-  print(ufcns$EmpRejections$global)
-  print(alpha_k)
+  print(paste("Global rejection:", ufcns$EmpRejections$global))
+  print(paste("alpha: ", alpha_k))
 
   niter   = 0
   if(maxIter != 0){
       a = c(alpha, alpha_up)
 
       while(niter < maxIter & abs(diff) > tol){
-        alpha_k = a[1]*0.8 + a[2]*0.2
+        alpha_k = a[1]*0.7 + a[2]*0.3
         ufcns <- fair_Bootstrap(alpha     = alpha_k, x = x, samples = samples,
                                 crit.set  = crit.set,
                                 knots     = knots,
@@ -237,8 +238,8 @@ fair_quantile_boot <- function(alpha, x, samples,
           a[2] = alpha_k
         }
         niter = niter + 1
-        print(ufcns$EmpRejections$global)
-        print(alpha_k)
+        print(paste("Global rejection:", ufcns$EmpRejections$global))
+        print(paste("alpha: ", alpha_k))
       }
   }
 
@@ -262,8 +263,9 @@ fair_quantile_boot <- function(alpha, x, samples,
 #'   thresholding function with respect to the sample.
 #' }
 #' @export
-alg1_gKR_t <- function(alpha, knots, tau, df = NULL, sigma = 1,
-                       I_weights = rep(1/(length(knots) - 1), length(knots) - 1)){
+alg1_gKR_t <- function(alpha, knots, tau, df = NULL,
+                       I_weights = rep(1/(length(knots) - 1), length(knots) - 1),
+                       sigma = 1){
   # Get the amount of Intervals
   K <- length(I_weights)
   # Initialize the parameters for the piecewise linear function on each Interval
@@ -273,7 +275,7 @@ alg1_gKR_t <- function(alpha, knots, tau, df = NULL, sigma = 1,
   # Find constant for first interval
   find_u0 <- function(u0){
     GeneralKacRice_t(tau = tau,
-          u = function(y){rep(u0, length(y))},
+          u  = function(y){rep(u0, length(y))},
           du = function(y){rep(0, length(y))}, x = c(knots[1], knots[2]),
           df = df,
           sigma = sigma, crossings = "down", t0 = 2) - alpha * I_weights[1]
@@ -376,8 +378,9 @@ alg1_gKR_t <- function(alpha, knots, tau, df = NULL, sigma = 1,
 #'   thresholding function with respect to the sample.
 #' }
 #' @export
-alg1_gKR_const <- function(alpha, knots, tau, df = NULL, sigma = 1,
-                         I_weights = rep(1/(length(knots) - 1), length(knots) - 1)){
+alg1_gKR_const <- function(alpha, tau, df = NULL, knots,
+                           I_weights = rep(1/(length(knots) - 1), length(knots) - 1),
+                           sigma = 1){
   # Get the amount of Intervals
   K <- length(I_weights)
   # Initialize the parameters for the piecewise linear function on each Interval
@@ -423,15 +426,32 @@ fair_quantile_EEC_t <- function(alpha, tau, x = seq(0, 1, length.out = 2), df = 
                                                  plus  = rep(T, length(x))),
                                 knots     = range(x),
                                 I_weights = rep(1/(length(knots) - 1), length(knots) - 1),
+                                type      = "linear",
                                 sigma     = 1,
                                 alpha_up  = alpha*(length(knots)-1),
                                 maxIter   = 20,
                                 tol       = alpha / 100){
+  # Get the correct algorithm 1 for the class of u and whether SCoPES or SCBs
+  # are computed
+  if(all(crit.set$minus) | all(crit.set$plus)){
+    if(type == "linear"){
+      alg1 <- alg1_gKR_t
+    }else{
+      alg1 <- alg1_gKR_const
+    }
+  }else{
+    knots     <- adapt_knots(knots, crit.set)
+    I_weights <- adapt_Iweights(I_weights, crit.set)
+
+    alg1 <- alg1_gKR_t_pw
+  }
+
+
   # Initialize the u function
   alpha_k = alpha
-  ufcns  <- alg1_gKR_t(alpha = alpha_k, tau = tau, df = df,
-                       knots = knots, I_weights = I_weights,
-                       sigma = sigma)
+  ufcns  <- alg1(alpha = alpha_k, tau = tau, df = df,
+                 knots = knots, I_weights = I_weights,
+                 sigma = sigma)
 
   diff <- GeneralKacRice_t(tau = tau,
                            u   = ufcns$u,
@@ -445,8 +465,9 @@ fair_quantile_EEC_t <- function(alpha, tau, x = seq(0, 1, length.out = 2), df = 
   if(abs(diff) > tol & maxIter != 0){
 
     alpha_k = alpha_up
-    ufcns  <- alg1_gKR_t(alpha = alpha_k, df = df, knots = knots, I_weights = I_weights,
-                         tau = tau, sigma = sigma)
+    ufcns  <- alg1(alpha = alpha_k, tau = tau, df = df,
+                   knots = knots, I_weights = I_weights,
+                   sigma = sigma)
 
     diff <- GeneralKacRice_t(tau = tau, u = ufcns$u, du = ufcns$du,
                              df = df, x = range(knots),
@@ -456,9 +477,10 @@ fair_quantile_EEC_t <- function(alpha, tau, x = seq(0, 1, length.out = 2), df = 
       a = c(alpha, alpha_up)
 
       while(niter < maxIter & abs(diff) > tol){
-        alpha_k = a[1]*0.6 + a[2]*0.4
-        ufcns <- alg1_gKR_t(alpha = alpha_k, df = df, knots = knots,
-                            tau = tau, sigma = sigma, I_weights = I_weights)
+        alpha_k = a[1]*0.8 + a[2]*0.2
+        ufcns <- alg1(alpha = alpha_k, tau = tau, df = df,
+                      knots = knots, I_weights = I_weights,
+                      sigma = sigma)
 
         diff <- GeneralKacRice_t(tau = tau, u = ufcns$u, du = ufcns$du,
                                  df = df, x = range(knots),
@@ -477,6 +499,8 @@ fair_quantile_EEC_t <- function(alpha, tau, x = seq(0, 1, length.out = 2), df = 
   }
   return(list(u = ufcns$u, du = ufcns$du, alpha_loc = alpha_k*I_weights, niter = niter))
 }
+
+
 
 #' This function is only here for comparison with the implementation of
 #' D Liebl. It is essentially copied from the ffscb package.

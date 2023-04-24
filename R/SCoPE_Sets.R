@@ -158,11 +158,11 @@ SCoPES <- function(alpha, C, x = seq(0, 1, length.out = length(hatmu)),
   if(Preimage.method$name == "thickening"){
     hatmu1C = PreimageC_thickening(
                     C = C, hatmu = hatmu, hatsigma = hatsigma,
-                    tN = tN, kN = Preimage.method$kN)
+                    tN = tN, kN  = Preimage.method$kN)
   }else if(Preimage.method$name == "true"){
     hatmu1C = PreimageC_thickening(
                     C = C, hatmu = Preimage.method$mu, hatsigma = hatsigma,
-                    tN = tN, kN = Preimage.method$kN)
+                    tN = tN, kN  = Preimage.method$kN)
   }else if(Preimage.method$name == "SCB"){
     hatmu1C = list(minus = rep(TRUE, length(hatmu)),
                    plus  = rep(TRUE, length(hatmu)))
@@ -170,6 +170,12 @@ SCoPES <- function(alpha, C, x = seq(0, 1, length.out = length(hatmu)),
     hatmu1C = Preimage.method$m0
   }
 
+  # Get the modified weights and knots
+  new = adapt_knotes_weights(x, crit.set = hatmu1C,
+                             knots = q.method$knots,
+                             I_weights = q.method$I_weights)
+  q.method$I_weights <- new$I_weights
+  q.method$knots     <- new$knots
   #-----------------------------------------------------------------------------
   # Estimate the quantile for the SCoPES
   fair.q = NULL
@@ -195,11 +201,11 @@ SCoPES <- function(alpha, C, x = seq(0, 1, length.out = length(hatmu)),
     if( !(all(!hatmu1C$minus) && all(!hatmu1C$plus)) ){
       fair.q = fair_quantile_boot(alpha, samples = samples, x = x,
                                   crit.set  = hatmu1C,
-                                  knots     = q.method$fair.intervals,
-                                  I_weights = rep(1/(length(q.method$fair.intervals) - 1), length(q.method$fair.intervals) - 1),
-                                  type      = q.method$qshape,
-                                  alpha_up  = alpha*(length(q.method$fair.intervals) - 1),
-                                  maxIter   = q.method$fair.niter,
+                                  knots     = q.method$knots,
+                                  I_weights = q.method$I_weights,
+                                  type      = q.method$type,
+                                  alpha_up  = alpha*(length(q.method$knots) - 1),
+                                  maxIter   = q.method$maxIter,
                                   tol       = alpha / 100)
         q = fair.q$u(x)
       }else{
@@ -376,26 +382,30 @@ fairSCB <- function(alpha, hatmu, hatrho, tN,
                                        method  = q.method$Boottype,
                                        weights = q.method$weights)$samples
     if( !(all(!crit.set$minus) && all(!crit.set$plus)) ){
-      fair.q = Optimize_Fair_quantile_boot(samples,
-                                           x = x,
-                                           fair.intervals = q.method$fair.intervals,
-                                           fair.type = q.method$fair.type,
-                                           crit.set  = crit.set,
-                                           alpha  = alpha,
-                                           niter  = q.method$fair.niter,
-                                           subI   = subI,
-                                           print.coverage = q.method$print.coverage )
-      q = fair.q$q
+      fair.q = fair_quantile_boot(alpha  = alpha,
+                                  x = x,
+                                  samples = samples,
+                                  crit.set  = crit.set,
+                                  knots     = q.method$knots,
+                                  I_weights = q.method$I_weights,
+                                  type      = q.method$type,
+                                  alpha_up  = q.method$alpha_up,
+                                  maxIter   = q.method$maxIter)
+      q = fair.q$u(x)
     }else{
       fair.q = NULL
       q = rep(0, length(x))
     }
 
   }else if(q.method$name == "gKR_t"){
+    if(type == "two-sided"){
+      alpha = alpha / 2
+    }
+
     q = fair_quantile_EEC_t(alpha = alpha,
-                            tau  = q.method$tau,
-                            x    = range(q.method$knots),
-                            df = q.method$df,
+                            tau   = q.method$tau,
+                            x     = range(q.method$knots),
+                            df        = q.method$df,
                             crit.set  = crit.set,
                             knots     = q.method$knots,
                             I_weights = q.method$I_weights,
@@ -418,12 +428,12 @@ fairSCB <- function(alpha, hatmu, hatrho, tN,
 
   # Output
   if(is.null(mu)){
-    return(SCB)
+    return(list(SCB = SCB, q = q))
   }else{
     loc.cov = abs(mu - hatmu) <= q*tN*hatrho
 
     # Note that the coverage only works for two-sided!
-    return(list(SCB = cbind(hatmu - tN*hatrho*q, hatmu + tN*hatrho*q),
+    return(list(SCB = SCB,
                 q = q,
                 loc.cov  = loc.cov,
                 glob.cov = all(loc.cov)))
