@@ -431,7 +431,7 @@ fair_quantile_EEC_t <- function(alpha, tau, x = seq(0, 1, length.out = 2), df = 
                                 sigma     = 1,
                                 alpha_up  = alpha*(length(knots)-1),
                                 maxIter   = 20,
-                                tol       = alpha / 100){
+                                tol       = alpha / 10){
   # Get the correct algorithm 1 for the class of u and whether SCoPES or SCBs
   # are computed
   if(all(crit.set$minus) | all(crit.set$plus)){
