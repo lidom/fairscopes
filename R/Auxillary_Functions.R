@@ -401,7 +401,12 @@ adapt_knotes_weights <- function(x, crit.set, knots, I_weights, vol = NULL){
           inds_cc_ll = range(tt[[ints_k[ll]]])
           add_knots = x[inds_cc_ll]
           # remove the index
-          if(inds_cc_ll[1] == inds_bdry_k[1]){
+          if(inds_cc_ll[1] == inds_bdry_k[1] &&
+             inds_cc_ll[2] == inds_bdry_k[2]){
+            add_knots[1] = knots[k]
+            add_knots[2] = knots[k+1]
+            vol = diff(add_knots)
+          }else if(inds_cc_ll[1] == inds_bdry_k[1]){
             add_knots[1] = knots[k]
             add_knots[2] = add_knots[2] + dx/2
             vol = diff(add_knots)
@@ -414,9 +419,18 @@ adapt_knotes_weights <- function(x, crit.set, knots, I_weights, vol = NULL){
             # Compute the volume
             vol = diff(add_knots)
           }
-        }else{# treat single points as if they would be of size dx
-          add_knots = x[tt[[ints_k[ll]]]] + c(-1, 1) * dx/2
-          vol = dx
+        }else{
+          # treat single points as if they would be of size dx
+          if(tt[[ints_k[ll]]] == 1){
+            add_knots = c(1,1)*x[tt[[ints_k[ll]]]] + dx/2
+            vol = dx/2
+          }else if(tt[[ints_k[ll]]] == length(x)){
+            add_knots = c(1,1)*x[tt[[ints_k[ll]]]] - dx/2
+            vol = dx/2
+          }else{
+            add_knots = x[tt[[ints_k[ll]]]] + c(-1, 1) * dx/2
+            vol = dx
+          }
         }
         # save the knots and the volume for the ll'th cc
         subknots[[k]][,ll] <- c(add_knots, vol)
@@ -447,80 +461,82 @@ adapt_knotes_weights <- function(x, crit.set, knots, I_weights, vol = NULL){
       knots_new <- c(knots_new, knots[k])
     }
   }
-  knots_new <- c(knots_new, length(knots))
+  knots_new <- c(knots_new, knots[length(knots)])
 
   # Iweights_fun = approxfun(x = new$knots[-length(new$knots)], y = new$I_weights,
   #                          method = "constant", rule = 2)
   # abline(v = new$knots, col = 3)
   # lines(x, Iweights_fun(x), col=2)
 
-  #-----------------------------------------------------------------------------
-  # Start half the weights if crit sets intersect
-  half    = (crit.set$minus == 1) & (crit.set$plus == 1)
-  cc_half = get_cc(half)
-
-  knots     <- knots_new
-  I_weights <- I_weights_new
-
-  for(l in 1:length(cc_half)){
-    # Get the indices of the boundary of
-    inds = range(cc_half[[l]])
-    if(any(abs(x[inds[1]] - knots) <= dx/2 * (1 + 1e-8)) &
-       any(abs(x[inds[2]] - knots) <= dx/2 * (1 + 1e-8))){
-      # If both endpoints of the component agrees with
-      # knots from the partition than half all of them between
-      # these values
-      ia = which(abs(x[inds[1]] - knots) <= dx/2 * (1 + 1e-8))[1]
-      ie = which(abs(x[inds[2]] - knots) <= dx/2 * (1 + 1e-8))[1]
-      for(i in ia:ie){
-        I_weights[i] <- I_weights[i] / 2
-      }
-
-    }else if(any(abs(x[inds[1]] - knots) <= dx/2 * (1 + 1e-8))){
-      i = which(abs(x[inds[1]] - knots) <= dx/2 * (1 + 1e-8))
-
-      while( knots[i] < x[inds[2]] ){
-        I_weights[i] <- I_weights[i] / 2
-        i = i+1
-      }
-
-      # Add a new knot and give the interval afterwards the same weight
-      # as before but not modificated by 2
-      knots     <- append(knots, x[inds[2]] + dx/2, after = i-1)
-      I_weights <- append(I_weights, I_weights[i-1] * 2, after = i-1)
-
-    }else if(any(abs(x[inds[2]] - knots) <= dx/2 * (1 + 1e-8))){
-      i = which(x[inds[1]] - knots < 0)[1] - 1
-      # Add a new knot and give the interval afterwards the same weight
-      # as before but not modificated by 2
-      knots     <- append(knots, x[inds[1]] - dx/2, after = i)
-      I_weights <- append(I_weights, I_weights[i] / 2, after = i)
-
-      i = i + 2
-      while( knots[i] < x[inds[2]] ){
-        I_weights[i] <- I_weights[i] / 2
-        i = i+1
-      }
-
-    }else{
-      i = which(x[inds[1]] - knots < 0)[1] - 1
-      # Add a new knot and give the interval afterwards the same weight
-      # as before but not modificated by 2
-      knots     <- append(knots, x[inds[1]] - dx/2, after = i)
-      I_weights <- append(I_weights, I_weights[i] / 2, after = i)
-
-      i = i + 2
-      while( knots[i] < x[inds[2]] ){
-        I_weights[i] <- I_weights[i] / 2
-        i = i+1
-      }
-
-      # Add a new knot and give the interval afterwards the same weight
-      # as before but not modificated by 2
-      knots     <- append(knots, x[inds[2]] + dx/2, after = i-1)
-      I_weights <- append(I_weights, I_weights[i-1] * 2, after = i-1)
-    }
-  }
+  # #-----------------------------------------------------------------------------
+  # # Start half the weights if crit sets intersect
+  # half    = (crit.set$minus == 1) & (crit.set$plus == 1)
+  # if(any(half)){
+  #   cc_half = get_cc(half)
+  #
+  #   knots     <- knots_new
+  #   I_weights <- I_weights_new
+  #
+  #   for(l in 1:length(cc_half)){
+  #     # Get the indices of the boundary of
+  #     inds = range(cc_half[[l]])
+  #     if(any(abs(x[inds[1]] - knots) <= dx/2 * (1 + 1e-8)) &
+  #        any(abs(x[inds[2]] - knots) <= dx/2 * (1 + 1e-8))){
+  #       # If both endpoints of the component agrees with
+  #       # knots from the partition than half all of them between
+  #       # these values
+  #       ia = which(abs(x[inds[1]] - knots) <= dx/2 * (1 + 1e-8))[1]
+  #       ie = which(abs(x[inds[2]] - knots) <= dx/2 * (1 + 1e-8))[1]
+  #       for(i in ia:ie){
+  #         I_weights[i] <- I_weights[i] / 2
+  #       }
+  #
+  #     }else if(any(abs(x[inds[1]] - knots) <= dx/2 * (1 + 1e-8))){
+  #       i = which(abs(x[inds[1]] - knots) <= dx/2 * (1 + 1e-8))
+  #
+  #       while( knots[i] < x[inds[2]] ){
+  #         I_weights[i] <- I_weights[i] / 2
+  #         i = i+1
+  #       }
+  #
+  #       # Add a new knot and give the interval afterwards the same weight
+  #       # as before but not modificated by 2
+  #       knots     <- append(knots, x[inds[2]] + dx/2, after = i-1)
+  #       I_weights <- append(I_weights, I_weights[i-1] * 2, after = i-1)
+  #
+  #     }else if(any(abs(x[inds[2]] - knots) <= dx/2 * (1 + 1e-8))){
+  #       i = which(x[inds[1]] - knots < 0)[1] - 1
+  #       # Add a new knot and give the interval afterwards the same weight
+  #       # as before but not modificated by 2
+  #       knots     <- append(knots, x[inds[1]] - dx/2, after = i)
+  #       I_weights <- append(I_weights, I_weights[i] / 2, after = i)
+  #
+  #       i = i + 2
+  #       while( knots[i] < x[inds[2]] ){
+  #         I_weights[i] <- I_weights[i] / 2
+  #         i = i+1
+  #       }
+  #
+  #     }else{
+  #       i = which(x[inds[1]] - knots < 0)[1] - 1
+  #       # Add a new knot and give the interval afterwards the same weight
+  #       # as before but not modificated by 2
+  #       knots     <- append(knots, x[inds[1]] - dx/2, after = i)
+  #       I_weights <- append(I_weights, I_weights[i] / 2, after = i)
+  #
+  #       i = i + 2
+  #       while( knots[i] < x[inds[2]] ){
+  #         I_weights[i] <- I_weights[i] / 2
+  #         i = i+1
+  #       }
+  #
+  #       # Add a new knot and give the interval afterwards the same weight
+  #       # as before but not modificated by 2
+  #       knots     <- append(knots, x[inds[2]] + dx/2, after = i-1)
+  #       I_weights <- append(I_weights, I_weights[i-1] * 2, after = i-1)
+  #     }
+  #   }
+  # }
 
   # plot(x, crit.set$minus,  col = 4, pch = 3)
   # points(x, crit.set$plus, col = 2, pch = 4)

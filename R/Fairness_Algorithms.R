@@ -99,7 +99,8 @@ fair_Bootstrap <- function(alpha, samples, x,
       }else if(length(ind_plus) == 1){
         up.excursion = samples[ind_plus,] - q[ind_plus] >= 0
       }else{
-        up.excursion = apply(samples[ind_plus,] - q[ind_plus], 2, max) >= 0      }
+        up.excursion = apply(samples[ind_plus,] - q[ind_plus], 2, max) >= 0
+      }
     }
 
     mean(apply(cbind(low.excursion, up.excursion), 1, any))
@@ -118,8 +119,8 @@ fair_Bootstrap <- function(alpha, samples, x,
 
       if(q0 == -Inf){
         # Get the local statistic
-        maxIk = apply(rbind(apply(samples_minus[subIk,], 2, max),
-                            apply(samples_plus[subIk,], 2, max)), 2, max)
+        maxIk = apply(rbind(apply(t(t(samples_minus[subIk,])), 2, max),
+                            apply(t(t(samples_plus[subIk,])), 2, max)), 2, max)
 
         # Initialize the piecewise linear function
         mq = quantile( maxIk, 1 - alpha*I_weights[k], type = 8 )
@@ -140,7 +141,7 @@ fair_Bootstrap <- function(alpha, samples, x,
 
           return(subI_prob(k, qq) - alpha*I_weights[k])
         }
-        qk <- uniroot(solvef, interval = c(-500, 500))
+        qk <- uniroot(solvef, interval = c(-50, 50))
 
         # make the linear function only on the critical set
         ind = intersect(subIk, c(which(crit.set$minus), which(crit.set$plus)))
@@ -169,7 +170,7 @@ fair_Bootstrap <- function(alpha, samples, x,
 
   EmpRejections = IntervalProb(q = qq(x), crit.set = crit.set, samples = samples,
                                x = x, fair.intervals = knots, subI = subI)
-
+  plot(x, qq(x), type="l", main = "q function")
   # return the results
   return(list(u = qq, mu = mq, EmpRejections = EmpRejections))
 }
@@ -189,7 +190,7 @@ fair_quantile_boot <- function(alpha, x, samples,
                                type      = "linear",
                                alpha_up  = alpha*(length(knots) - 1),
                                maxIter = 20,
-                               tol     = alpha / 100,
+                               tol     = alpha / 10,
                                subI    = NULL,
                                inter   = NULL){
   # Get the interval
