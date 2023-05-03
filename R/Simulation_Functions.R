@@ -198,7 +198,10 @@ sim_SCBs <- function(Msim, NVec = c(20, 50, 100, 200),
         mY  = rowMeans(Y)
 
         if(is.null(sd_model)){
+          # Use sample variance as estimate
           sdY = apply(Y, 1, sd)
+          # degrees of freedom for the t-distribution
+          q.method$df = N - 1
         }else{
           sdY = sd_model(x = x)
         }
