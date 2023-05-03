@@ -171,7 +171,7 @@ SCoPES <- function(alpha, C, x = seq(0, 1, length.out = length(hatmu)),
   }
 
   # Get the modified weights and knots
-  new = adapt_knotes_weights(x, crit.set = hatmu1C,
+  new = adapt_knotes_weights(x = x, crit.set = hatmu1C,
                              knots = q.method$knots,
                              I_weights = q.method$I_weights)
   q.method$I_weights <- new$I_weights
