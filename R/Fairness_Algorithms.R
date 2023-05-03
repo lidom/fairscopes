@@ -224,7 +224,11 @@ fair_quantile_boot <- function(alpha, x, samples,
       a = c(alpha, alpha_up)
 
       while(niter < maxIter & abs(diff) > tol){
-        alpha_k = a[1]*0.7 + a[2]*0.3
+        if(niter < 3){
+          alpha_k = a[1]*0.8 + a[2]*0.2
+        }else{
+          alpha_k = mean(a)
+        }
         ufcns <- fair_Bootstrap(alpha     = alpha_k, x = x, samples = samples,
                                 crit.set  = crit.set,
                                 knots     = knots,
@@ -478,7 +482,12 @@ fair_quantile_EEC_t <- function(alpha, tau, x = seq(0, 1, length.out = 2), df = 
       a = c(alpha, alpha_up)
 
       while(niter < maxIter & abs(diff) > tol){
-        alpha_k = a[1]*0.8 + a[2]*0.2
+        if(niter < 3){
+          alpha_k = a[1]*0.8 + a[2]*0.2
+        }else{
+          alpha_k = mean(a)
+        }
+
         ufcns <- alg1(alpha = alpha_k, tau = tau, df = df,
                       knots = knots, I_weights = I_weights,
                       sigma = sigma)
