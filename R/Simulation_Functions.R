@@ -173,15 +173,16 @@ sim_SCBs <- function(Msim, NVec = c(20, 50, 100, 200),
 
     # Initialize the q.method list for the data.
     q.method.Y <- q.method
-    if(is.null(sd_model)){
-      q.method.Y$df = N-1
-    }
 
     #-------------------------------------------------------------------------------
     # Simulate the
     for(n in 1:length(Nvec)){
       N  = Nvec[n]
       tN = 1 / sqrt(N)
+
+      if(is.null(sd_model)){
+        q.method.Y$df = N-1
+      }
 
       local.cov[[n]]  <- matrix(NA, length(subI), Msim)
       global.cov[[n]] <- rep(NA, Msim)
@@ -200,8 +201,6 @@ sim_SCBs <- function(Msim, NVec = c(20, 50, 100, 200),
         if(is.null(sd_model)){
           # Use sample variance as estimate
           sdY = apply(Y, 1, sd)
-          # degrees of freedom for the t-distribution
-          q.method$df = N - 1
         }else{
           sdY = sd_model(x = x)
         }
