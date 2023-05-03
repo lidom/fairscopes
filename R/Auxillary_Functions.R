@@ -437,13 +437,15 @@ adapt_knotes_weights <- function(x, crit.set, knots, I_weights, vol = NULL){
       }
       # Get the relative volume
       subknots[[k]][3,] <- subknots[[k]][3,] / sum(subknots[[k]][3,])
+    }else{
+      subknots[[k]] <- NA
     }
   }
 
   # Get the new knots and the new weights
   I_weights_new <- knots_new <- c()
   for(k in 1:length(I_weights)){
-    if(!is.null(subknots[[k]])){
+    if(!all(is.na(subknots[[k]]))){
       if(subknots[[k]][1,1] != knots[k] ){
         I_weights_new <- c(I_weights_new, 0)
         knots_new <- c(knots_new, knots[k])
