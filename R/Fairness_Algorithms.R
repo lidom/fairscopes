@@ -248,7 +248,8 @@ fair_quantile_boot <- function(alpha, x, samples,
       }
   }
 
-  return(list(u = ufcns$u, du = ufcns$du, alpha_loc = alpha_k*I_weights, niter = niter))
+  return(list(u = ufcns$u, du = ufcns$du, alpha_loc = alpha_k*I_weights,
+              alpha_global = ufcns$EmpRejections$global, niter = niter))
 }
 
 
@@ -507,7 +508,8 @@ fair_quantile_EEC_t <- function(alpha, tau, x = seq(0, 1, length.out = 2), df = 
   }else{
 
   }
-  return(list(u = ufcns$u, du = ufcns$du, alpha_loc = alpha_k*I_weights, niter = niter))
+  return(list(u = ufcns$u, du = ufcns$du, alpha_loc = alpha_k*I_weights,
+              alpha_global = diff+alpha, niter = niter))
 }
 
 
