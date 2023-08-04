@@ -26,7 +26,7 @@
 #' @return a numeric, the value of the integral
 #' }
 #' @export
-integrate_save <- function(f1, xlims, nx = 300, subI = NULL){
+integrate_save <- function(f1, xlims, nx = 300){
   flag = T
   tryCatch(If1 <- integrate(f1, lower = xlims[1], upper = xlims[2])$value,
            error = function(e){flag <<- F})
