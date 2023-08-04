@@ -397,7 +397,7 @@ fairSCB <- function(alpha, hatmu, hatrho, tN,
       q = rep(0, length(x))
     }
 
-  }else if(q.method$name == "gKR_t"){
+  }else if(q.method$name == "KR_t"){
     if(type == "two-sided"){
       alpha = alpha / 2
     }

@@ -4,6 +4,7 @@
 #                                                                              #
 #------------------------------------------------------------------------------#
 # Contained functions:
+# - integrate_save()
 # - IntervalProb()
 # - sub.intervals()
 # - q_method_gen
@@ -14,6 +15,31 @@
 # - Fix the documentation and man pages
 #
 #------------------------------------------------------------------------------#
+#' Integrates a function using integrate but allows to integrate using trapezoid
+#' rule if R internal function fails to converge
+#'
+#' @param f1 a function to be integrated
+#' @param xlims vector of length 2 containing the range of the integration.
+#' @param nx a numeric denoting how fine the partition for the trapezoid rule is
+#'           chosen. Default 300.
+#' @param nx
+#' @return a numeric, the value of the integral
+#' }
+#' @export
+integrate_save <- function(f1, xlims, nx = 300, subI = NULL){
+  flag = T
+  tryCatch(If1 <- integrate(f1, lower = xlims[1], upper = xlims[2])$value,
+           error = function(e){flag <<- F})
+
+  if(!flag){
+    xx = seq(xlims[1], xlims[2], length.out = nx)
+    If1 <- sum((f1(xx[-1]) + f1(xx[-nx])) * (xx[2]-xx[1]) * c(0.5, rep(1, nx-3), 0.5))
+    If1
+  }
+
+  return(If1)
+}
+
 #' Estimates using a sample of random functions (for example a bootstrap sample)
 #' the FWER on different intervals.
 #'

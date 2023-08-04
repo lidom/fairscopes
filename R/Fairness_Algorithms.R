@@ -11,8 +11,8 @@
 #      - Optimize_Fair_quantile_boot() (removed)
 #      - fair_Bootstrap()
 #      - fair_quantile_boot()
-#      - alg1_gKR_t()
-#      - alg1_gKR_const()
+#      - alg1_KR_t()
+#      - alg1_KR_const()
 #      - fair_quantile_EEC_t()
 #      - alg1_z_DL()
 #------------------------------------------------------------------------------#
@@ -269,7 +269,7 @@ fair_quantile_boot <- function(alpha, x, samples,
 #'   thresholding function with respect to the sample.
 #' }
 #' @export
-alg1_gKR_t <- function(alpha, knots, tau, df = NULL,
+alg1_KR_t <- function(alpha, knots, tau, df = NULL,
                        I_weights = rep(1/(length(knots) - 1), length(knots) - 1),
                        sigma = 1){
   # Get the amount of Intervals
@@ -384,7 +384,7 @@ alg1_gKR_t <- function(alpha, knots, tau, df = NULL,
 #'   thresholding function with respect to the sample.
 #' }
 #' @export
-alg1_gKR_const <- function(alpha, tau, df = NULL, knots,
+alg1_KR_const <- function(alpha, tau, df = NULL, knots,
                            I_weights = rep(1/(length(knots) - 1), length(knots) - 1),
                            sigma = 1){
   # Get the amount of Intervals
@@ -441,15 +441,15 @@ fair_quantile_EEC_t <- function(alpha, tau, x = seq(0, 1, length.out = 2), df = 
   # are computed
   if(all(crit.set$minus) | all(crit.set$plus)){
     if(type == "linear"){
-      alg1 <- alg1_gKR_t
+      alg1 <- alg1_KR_t
     }else{
-      alg1 <- alg1_gKR_const
+      alg1 <- alg1_KR_const
     }
   }else{
     knots     <- adapt_knots(knots, crit.set)
     I_weights <- adapt_Iweights(I_weights, crit.set)
 
-    alg1 <- alg1_gKR_t_pw
+    alg1 <- alg1_KR_t_pw
   }
 
 

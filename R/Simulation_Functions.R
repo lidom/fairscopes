@@ -163,9 +163,9 @@ sim_SCoPES <- function(Msim, N, alpha, C, q_method, model, I = NULL,
 sim_SCBs <- function(Msim, NVec = c(20, 50, 100, 200),
                      x, alpha = 0.1, q_method, model, mu_model, sd_model = NULL){
 
-    local.cov  <- global.cov <- list()
+    local.cov    <- global.cov <- list()
     quantile.est <- tau.est <- list()
-    Timing     <- rep(NA, length(Nvec))
+    Timing       <- rep(NA, length(Nvec))
 
     subI <- sub.intervals(x, q_method$knots,
                           list(minus = rep(TRUE, length(x)),
@@ -213,7 +213,7 @@ sim_SCBs <- function(Msim, NVec = c(20, 50, 100, 200),
         tau = q.method$tau.est(R, x)
 
         # Change the tau function to the estimate from the sample
-        q.method.Y$tau.est = tau
+        q.method.Y$tau = tau
 
         # Get the confidence band
         flag = T

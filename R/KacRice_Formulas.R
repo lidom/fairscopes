@@ -71,12 +71,15 @@ GeneralKacRice_t <- function(tau, u, du, x, df = NULL,
     }
   }
 
-  I1 <- f0(-u(x[t0]) / sigma) +
-          integrate(f1, lower = x[1], upper = x[length(x)])$value
+  If1 <- integrate_save(f1, xlims = c(x[1], x[length(x)]) )
+
+  I1 <- f0(-u(x[t0]) / sigma) + If1
 
   if(crossings == "up"){
-    return(I1 - integrate(f3, lower = x[1], upper = x[length(x)])$value)
+    If3 <- integrate_save(f3, xlims = c(x[1], x[length(x)]) )
+    return(I1 - If3 )
   }else{
-    return(I1 + integrate(f2, lower = x[1], upper = x[length(x)])$value)
+    If2 <- integrate_save(f2, xlims = c(x[1], x[length(x)]) )
+    return(I1 + If2)
   }
 }
