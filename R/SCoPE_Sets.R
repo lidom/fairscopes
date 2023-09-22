@@ -414,6 +414,30 @@ fairSCB <- function(alpha, hatmu, hatrho, tN,
                             maxIter   = q.method$maxIter,
                             tol = alpha / 100)$u
     q = q(x)
+  }else if(q.method$name == "KR_t_nonfair"){
+    if(type == "two-sided"){
+      alpha = alpha / 2
+    }
+
+    q = RFT::GKFthreshold( alpha = alpha,
+                      LKC = c(1, integrate(q.method$tau,
+                                     lower = x[1],
+                                     upper = x[length(x)])$val),
+                      type = "t",
+                      df = N-1,
+                      interval = c(0, 100) )$threshold
+  }else if(q.method$name == "KR_z_nonfair"){
+    if(type == "two-sided"){
+      alpha = alpha / 2
+    }
+
+    q = RFT::GKFthreshold( alpha = alpha,
+                      LKC = c(1, integrate(q.method$tau,
+                                           lower = x[1],
+                                           upper = x[length(x)])$val),
+                      type = "z",
+                      df = 0,
+                      interval = c(0, 100) )$threshold
   }
 
   SCB = cbind(hatmu - tN*hatrho*q, hatmu + q*tN*hatrho)
