@@ -170,7 +170,7 @@ fair_Bootstrap <- function(alpha, samples, x,
 
   EmpRejections = IntervalProb(q = qq(x), crit.set = crit.set, samples = samples,
                                x = x, fair.intervals = knots, subI = subI)
-  plot(x, qq(x), type="l", main = "q function")
+  # plot(x, qq(x), type="l", main = "q function")
   # return the results
   return(list(u = qq, mu = mq, EmpRejections = EmpRejections))
 }
@@ -216,8 +216,8 @@ fair_quantile_boot <- function(alpha, x, samples,
                            type      = type, subI = subI, inter = inter)
 
   diff <- ufcns$EmpRejections$global - alpha
-  print(paste("Global rejection:", ufcns$EmpRejections$global))
-  print(paste("alpha: ", alpha_k))
+  #  print(paste("Global rejection:", ufcns$EmpRejections$global))
+  #  print(paste("alpha: ", alpha_k))
 
   niter   = 0
   if(maxIter != 0){
@@ -243,11 +243,11 @@ fair_quantile_boot <- function(alpha, x, samples,
           a[2] = alpha_k
         }
         niter = niter + 1
-        print(paste("Global rejection:", ufcns$EmpRejections$global))
-        print(paste("alpha: ", alpha_k))
+        #        print(paste("Global rejection:", ufcns$EmpRejections$global))
+        #        print(paste("alpha: ", alpha_k))
       }
   }
-
+#  print(paste("alpha QUIT: ", alpha_k))
   return(list(u = ufcns$u, du = ufcns$du, alpha_loc = alpha_k*I_weights,
               alpha_global = ufcns$EmpRejections$global, niter = niter))
 }

@@ -206,11 +206,11 @@ sim_SCBs <- function(Msim, NVec = c(20, 50, 100, 200),
         }
 
         # Generate residuals
-
         R = (Y - rowMeans(Y)) / sdY
+        q.method.Y$R = R
 
         # Estimate tau
-        tau = q.method$tau.est(R, x)
+        tau = q.method.Y$tau.est(R, x)
 
         # Change the tau function to the estimate from the sample
         q.method.Y$tau = tau

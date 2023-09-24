@@ -424,7 +424,7 @@ fairSCB <- function(alpha, hatmu, hatrho, tN,
                                      lower = x[1],
                                      upper = x[length(x)])$val),
                       type = "t",
-                      df = N-1,
+                      df = q.method$df,
                       interval = c(0, 100) )$threshold
   }else if(q.method$name == "KR_z_nonfair"){
     if(type == "two-sided"){
