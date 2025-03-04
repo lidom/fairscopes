@@ -526,7 +526,7 @@ fair_quantile_EEC_t <- function(alpha, tau, x = seq(0, 1, length.out = 2), df = 
 #'   thresholding function with respect to the sample.
 #' }
 #' @export
-alg1_z_DL <- function (tau, diag.cov, conf.level = 0.95, n_int = 4){
+alg1_z_DL <- function (tau, diag.cov=rep(1, length(tau)), conf.level = 0.95, n_int = 4){
   tol <- .Machine$double.eps^0.35
   alpha <- 1 - conf.level
   tt <- seq(0, 1, len = length(tau))

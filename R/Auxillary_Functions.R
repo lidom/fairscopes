@@ -22,9 +22,8 @@
 #' @param xlims vector of length 2 containing the range of the integration.
 #' @param nx a numeric denoting how fine the partition for the trapezoid rule is
 #'           chosen. Default 300.
-#' @param nx
 #' @return a numeric, the value of the integral
-#' }
+#'
 #' @export
 integrate_save <- function(f1, xlims, nx = 300){
   flag = T
@@ -576,4 +575,69 @@ adapt_knotes_weights <- function(x, crit.set, knots, I_weights, vol = NULL){
   #
 
   return(list(knots = knots, I_weights = I_weights))
+}
+
+#' This function generates a list with the required input for different
+#' methods to estimate the quantile function q of a SCoPE set.
+#'
+#' @param Y matrix N x M contains the data as columns
+#' @param X Design matrix of the linear model
+#' @param sigma vector of length M containing the standard deviation or its estimate
+#' @param W covariance matrix or estimated covariance matrix for generalized linear model
+#' @return Scale field
+#' @export
+ptw_linModel <- function(Y, X, sigma = NULL, W = NULL){
+  # Get sigma
+  if(is.null(sigma)){
+    sigma = rep(1, dim(Y)[1])
+  }else if(is.numeric(sigma) && length(sigma) == 1){
+    sigma = rep(sigma, dim(Y)[1])
+  }else if(is.numeric(sigma) && length(sigma) != dim(Y)[1]){
+    stop("wrong dimension of sigma")
+  }
+
+  if(is.null(W)){
+    hatbeta = apply(Y, 1, function(r) inv(t(X)%*%X)%*%t(X)%*%r)
+    hatY    = t(X%*%hatbeta)
+
+    res = Y - hatY
+    if(!is.numeric(sigma)){
+      if(sigma == "estimate" ){
+        sigma = apply(res, 1, function(r) sqrt(sum(r^2) / (dim(X)[1] - dim(X)[2] - 1)))
+      }
+    }
+    # test statistic
+    norm2_Xbeta = apply(hatY, 1, function(r) sum(r^2)) / sigma^2
+
+  }else{
+    W1      = lapply(W, function(i)  inv(i))
+    hatbeta = vapply(1:dim(Y)[1], function(i)
+                    inv(t(X) %*% W1[[i]] %*% X) %*% t(X) %*% W1[[i]] %*% Y[i,],
+                    FUN.VALUE = rep(0.1, dim(X)[2]))
+    # apply(Y, 1, function(r) inv(t(X) %*% W1 %*% X) %*% t(X) %*% W1 %*% r)
+    hatY    = t(X %*% hatbeta)
+
+    res = t(vapply( 1:dim(Y)[1], function(i){
+                                  sqrt(W1[[i]]) %*% (Y[i,] - hatY[i,])
+                                    }, FUN.VALUE = rep(pi, dim(Y)[2]) ))
+    if(!is.numeric(sigma)){
+      if(sigma == "estimate"){
+        sigma = vapply(1:dim(Y)[1], function(i){
+         t(Y[i,] - hatY[i,]) %*% W1[[i]] %*% (Y[i,] - hatY[i,])  / (dim(X)[1] - dim(X)[2] - 1)
+        }, FUN.VALUE = pi)
+      }
+    }
+
+    # test statistic
+    norm2_Xbeta = vapply(1:dim(Y)[1], function(i)
+                            t(hatY[i,]) %*% W1[[i]] %*% hatY[i,], FUN.VALUE = pi ) / sigma^2
+     # apply(hatY, 1, function(r) t(r) %*% W1 %*% r ) / sigma^2
+  }
+
+
+  return(list(hatbeta   = hatbeta,
+              hatY      = t(hatY),
+              residuals = res,
+              sigma     = sigma,
+              TestStat  = norm2_Xbeta))
 }
