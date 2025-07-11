@@ -427,7 +427,7 @@ alg1_KR_const <- function(alpha, tau, df = NULL, knots,
 #' @inheritParams SCoPES
 #' @return Standard error under the assumption the data is Gaussian
 #' @export
-fair_quantile_EEC_t <- function(alpha, tau, x = seq(0, 1, length.out = 2), df = NULL,
+fair_quantile_KRF <- function(alpha, tau, x = seq(0, 1, length.out = 2), df = NULL,
                                 crit.set  = list(minus = rep(T, length(x)),
                                                  plus  = rep(T, length(x))),
                                 knots     = range(x),

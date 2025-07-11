@@ -154,17 +154,18 @@ sim_SCoPES <- function(Msim, N, alpha, C, q.method, model, I = NULL,
 
 
 
-#' This functions computes the SCoPES corresponding to an estimator and a set
+#' This functions simulates SCBs corresponding to an estimator and a set
 #' of functions given as a matrix with columns being the cut-off functions.
 #'
 #' @inheritParams SCoPES
 #' @return Standard error under the assumption the data is Gaussian
 #' @export
-sim_SCBs <- function(Msim, NVec = c(20, 50, 100, 200),
-                     x, alpha = 0.1, q.method, model, mu.model, sd.model = NULL){
+sim_SCBs <- function(Msim, Nvec = c(20, 50, 100, 200),
+                     x, alpha = 0.1, q.method, model, mu.model, sd.model = NULL,
+                     est_tau = TRUE){
 
     local.cov    <- global.cov <- list()
-    quantile.est <- tau.est <- list()
+    quantile.est <- tau.est    <- list()
     Timing       <- rep(NA, length(Nvec))
 
     subI <- sub.intervals(x, q.method$knots,
@@ -209,11 +210,14 @@ sim_SCBs <- function(Msim, NVec = c(20, 50, 100, 200),
         R = (Y - rowMeans(Y)) / sdY
         q.method.Y$R = R
 
-        # Estimate tau
-        tau = q.method.Y$tau.est(R, x)
-
-        # Change the tau function to the estimate from the sample
-        q.method.Y$tau = tau
+        # Change the tau function to the estimate from the sample or keep the
+        # truth
+        if(est_tau){
+          q.method.Y$tau = q.method.Y$tau.est(R, x)
+          tau = q.method.Y$tau
+        }else{
+          tau = q.method.Y$tau
+        }
 
         # Get the confidence band
         flag = T
@@ -240,24 +244,25 @@ sim_SCBs <- function(Msim, NVec = c(20, 50, 100, 200),
 
     #---------------------------------------------------------------------------
     # Create a list with the results
+    NI = length(q.method$knots)-1
     na.sims <- vapply(1:length(local.cov), function(l)
                       sum(is.na(local.cov[[l]][1,])),
                       FUN.VALUE = 0.1)
     cov.res <- vapply(1:length(local.cov), function(l)
                       rowMeans(local.cov[[l]], na.rm = TRUE),
-                      FUN.VALUE = seq(0, 1, length.out = q.method$Nknots))
+                      FUN.VALUE = seq(0, 1, length.out = NI))
 
     cov.res <- rbind(cov.res, vapply(1:length(local.cov), function(l)
                      mean(global.cov[[l]], na.rm = TRUE), FUN.VALUE = 1))
 
     cov.res.sd <- vapply(1:length(local.cov), function(l)
                           sqrt(matrixStats::rowVars(1*local.cov[[l]], na.rm = TRUE)),
-                          FUN.VALUE = seq(0, 1, length.out = q.method$Nknots))
+                          FUN.VALUE = seq(0, 1, length.out = NI))
 
     cov.res.sd <- rbind(cov.res.sd, vapply(1:length(local.cov), function(l)
                          sd(1*global.cov[[l]], na.rm = TRUE), FUN.VALUE = 1))
 
-    rownames(cov.res) <- rownames(cov.res.sd) <- c(1:q.method$Nknots, "global")
+    rownames(cov.res) <- rownames(cov.res.sd) <- c(1:NI, "global")
     colnames(cov.res) <- colnames(cov.res.sd) <- Nvec
 
     return(list(coverage = cov.res,
@@ -270,6 +275,118 @@ sim_SCBs <- function(Msim, NVec = c(20, 50, 100, 200),
              simSD       = sqrt(alpha*(1-alpha)/Msim)))
 }
 
+#' This functions simulates SCBs corresponding to an estimator and a set
+#' of functions given as a matrix with columns being the cut-off functions.
+#'
+#' @inheritParams SCoPES
+#' @return Standard error under the assumption the data is Gaussian
+#' @export
+sim_SCBs_var <- function(Msim, Nvec = c(20, 50, 100, 200),
+                         x, alpha = 0.1, q.method, model, sd.model,
+                         est_tau = TRUE){
+
+  local.cov    <- global.cov <- list()
+  lb.est       <- ub.est <- tau.est    <- list()
+  Timing       <- rep(NA, length(Nvec))
+
+  subI <- sub.intervals(x, q.method$knots,
+                        list(minus = rep(TRUE, length(x)),
+                             plus  = rep(TRUE, length(x))))$subI
+
+  # Initialize the q.method list for the data.
+  q.method.Y <- q.method
+
+  #-------------------------------------------------------------------------------
+  # Simulate the
+  for(n in 1:length(Nvec)){
+    N  = Nvec[n]
+    q.method.Y$df = N-1
+
+    local.cov[[n]]  <- matrix(NA, length(subI), Msim)
+    global.cov[[n]] <- rep(NA, Msim)
+
+    lb.est[[n]] <- ub.est[[n]] <- matrix(NA, length(x), Msim)
+    tau.est[[n]] <- matrix(NA, length(x), Msim)
+
+    Ia <- Sys.time()
+    for(m in 1:Msim){
+      # Generate a sample
+      Y = model(N,  x = x)$values
+
+      # Estimate sd
+      sdY = apply(Y, 1, sd)
+
+      # Generate residuals
+      R = (Y - rowMeans(Y)) / sdY
+      q.method.Y$R = R
+
+      # Change the tau function to the estimate from the sample or keep the
+      # truth
+      if(est_tau){
+        tau = q.method.Y$tau.est(R, x)
+      }else{
+        tau = q.method.Y$tau
+      }
+      q.method.Y$tau = tau
+
+      # Get the confidence band
+      flag = T
+      tryCatch(SCB <- fairSCB_var(alpha, hatvar = sdY^2, x = x,
+                                  q.method = q.method.Y, type = "two-sided",
+                                  true_var = sd.model(x)^2),
+               error = function(e){flag <<- F})
+
+      #-------------------------------------------------------------------------------
+      # Get the coverage of the band
+      if(flag){
+        global.cov[[n]][m] <- SCB$glob.cov
+
+        local.cov[[n]][,m] <- unlist(lapply(subI, function(l){
+          all(SCB$loc.cov[l])
+        } ))
+        # Save other interesting quantities
+        lb.est[[n]][,m]  <- SCB$lb(x)
+        ub.est[[n]][,m]  <- SCB$ub(x)
+        tau.est[[n]][,m] <- tau(x)
+      }
+    }
+    Ie <- Sys.time()
+    Timing[n] <- Ie - Ia
+  }
+
+  #---------------------------------------------------------------------------
+  # Create a list with the results
+  NI = length(q.method$knots)-1
+  na.sims <- vapply(1:length(local.cov), function(l)
+    sum(is.na(local.cov[[l]][1,])),
+    FUN.VALUE = 0.1)
+  cov.res <- vapply(1:length(local.cov), function(l)
+    rowMeans(local.cov[[l]], na.rm = TRUE),
+    FUN.VALUE = seq(0, 1, length.out = NI))
+
+  cov.res <- rbind(cov.res, vapply(1:length(local.cov), function(l)
+    mean(global.cov[[l]], na.rm = TRUE), FUN.VALUE = 1))
+
+  cov.res.sd <- vapply(1:length(local.cov), function(l)
+    sqrt(matrixStats::rowVars(1*local.cov[[l]], na.rm = TRUE)),
+    FUN.VALUE = seq(0, 1, length.out = NI))
+
+  cov.res.sd <- rbind(cov.res.sd, vapply(1:length(local.cov), function(l)
+    sd(1*global.cov[[l]], na.rm = TRUE), FUN.VALUE = 1))
+
+  rownames(cov.res) <- rownames(cov.res.sd) <- c(1:NI, "global")
+  colnames(cov.res) <- colnames(cov.res.sd) <- Nvec
+
+  return(list(coverage = cov.res,
+              coverage.sd = cov.res.sd,
+              local.cov   = local.cov,
+              na.sims     = na.sims,
+              lb          = lb.est,
+              ub          = ub.est,
+              tau         = tau.est,
+              time        = Timing,
+              simSD       = sqrt(alpha*(1-alpha)/Msim)))
+}
 
 #' This functions computes the SCoPES corresponding to an estimator and a set
 #' of functions given as a matrix with columns being the cut-off functions.
