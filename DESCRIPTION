@@ -2,16 +2,17 @@ Package: fairscopes
 Type: Package
 Title: Fair Inference for Functional Data using SCoPE Sets
 Version: 0.0.0.9000
-Authors@R: c(person(given  = "Dominik",  
-                    family = "Liebl",    
-                    email  = "r.packages.mail@gmail.com", 
-                    role   = c("aut", "cre")),
-             person(given  = "Fabian",  
+Authors@R: c(person(given  = "Fabian",  
                     family = "Telschow", 
                     email  = "fabian.telschow@hu-berlin.de",         
-                    role   = "aut"))
+                    role   = "aut"),
+              person(given  = "Dominik",  
+                    family = "Liebl",    
+                    email  = "r.packages.mail@gmail.com", 
+                    role   = c("aut", "cre"))
+             )
 Description: Inference for functional data can be achieved using Simultaneous Confidence Probability Excursion (SCoPE) Sets. This method generalizes simultaneous inference using simultaneous confidence bands, allowing for more powerful simultaneous hypothesis tests.  
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.2.3
+RoxygenNote: 7.3.2

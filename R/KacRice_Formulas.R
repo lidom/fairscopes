@@ -4,7 +4,6 @@
 #                                                                              #
 #------------------------------------------------------------------------------#
 # Contained functions:
-# - KacRice_Z()
 # - KacRice_t()
 # - KacRice_ellipt()
 # - KacRice_chisq()
@@ -14,56 +13,6 @@
 # - Fix the documentation and man pages
 #
 #------------------------------------------------------------------------------#
-#' This functions computes the generalization of the Kac-Rice formula
-#' from ...
-#'
-#' @inheritParams SCoPES
-#' @return Standard error under the assumption the data is Gaussian
-#' @export
-KacRice_z <- function(tau, u, du, x,
-                      crossings = "up", t0 = NULL, sigma = 1,
-                      lower.tail = FALSE, EC = TRUE){
-  # Determines at which index of x the marginal probability is computed
-  if(is.null(t0)){
-    if(crossings == "up"){
-      t0 = 1
-    }else{
-      t0 = length(x)
-    }
-  }
-
-  # Get the formulas for the different integrands
-  #-----------------------------------------------------------------------------
-  f0 <- Vectorize(function(q, ...) pnorm(q, ...))
-
-  f1 <- function(t){
-    tau(t) / (2*pi) * exp( -(u(t)^2 + (du(t)/tau(t))^2) / (2*sigma^2) )
-  }
-
-  f2 <-  function(t){
-    du(t) / sqrt(2*pi*sigma^2) * exp(-u(t)^2 / (2*sigma^2)) *
-      pnorm(q = du(t) / sigma / tau(t))
-  }
-
-  f3 <-  function(t){
-    du(t) / sqrt(2*pi*sigma^2) * exp(-u(t)^2 / (2*sigma^2)) *
-      pnorm(q = -du(t) / sigma / tau(t))
-  }
-
-  # Compute the integrals and output the results
-  #-----------------------------------------------------------------------------
-  If1 <- integrate_save(f1, xlims = c(x[1], x[length(x)]) ) +
-              ifelse(EC, f0(u(x[t0]) / sigma, lower.tail = lower.tail), 0)
-
-  if(crossings == "down"){
-    If2 <- integrate_save(f2, xlims = c(x[1], x[length(x)]) )
-    return(If1 + If2 )
-  }else{
-    If3 <- integrate_save(f3, xlims = c(x[1], x[length(x)]) )
-    return(If1 - If3)
-  }
-}
-
 #' This functions computes the generalization of the Kac-Rice formula
 #' from ...
 #'
@@ -82,43 +31,79 @@ KacRice_t <- function(df, tau, u, du, x,
     }
   }
 
-  # Get the formulas for the different integrands
-  #-----------------------------------------------------------------------------
-  nup = df + 1
-  afun <- function(t){ sqrt(df * tau(t)^2 * (1 + u(t)^2 / df) / nup)}
+  if(is.null(df)){
+    # Formula for the z-field case
+    #---------------------------------------------------------------------------
+    # Get the formulas for the different integrands
+    #---------------------------------------------------------------------------
+    f0 <- Vectorize(function(q, ...) pnorm(q, ...))
 
-  # Add here the functions for the t-Kac-Rice formula
-  f0 <- function(t, lower.tail = lower.tail){
-    stats::pt(q = t, df = df, lower.tail = lower.tail)
-  }
+    f1 <- function(t){
+      tau(t) / (2*pi) * exp( -(u(t)^2 + (du(t)/tau(t))^2) / (2*sigma^2) )
+    }
 
-  f1 <- function(t){
-    tau(t) / (2*pi) * (1 + u(t)^2 / df + du(t)^2 / (df * tau(t)^2))^(-df / 2)
-  }
+    f2 <-  function(t){
+      du(t) / sqrt(2*pi*sigma^2) * exp(-u(t)^2 / (2*sigma^2)) *
+        pnorm(q = du(t) / sigma / tau(t))
+    }
 
-  f2 <- function(t){
-    du(t) / (2*pi*tau(t)) * (1 + u(t)^2 / df)^(-df/2 - 1)  *
-      gamma(nup/2) / gamma((nup + 1) / 2) * sqrt(nup*pi) * afun(t) *
-      stats::pt(q = du(t) / afun(t), df = nup)
-  }
+    f3 <-  function(t){
+      du(t) / sqrt(2*pi*sigma^2) * exp(-u(t)^2 / (2*sigma^2)) *
+        pnorm(q = -du(t) / sigma / tau(t))
+    }
 
-  f3 <- function(t){
-    du(t) / (2*pi*tau(t)) * (1 + u(t)^2 / df)^(-df/2 - 1)  *
-      gamma(nup/2) / gamma((nup + 1) / 2) * sqrt(nup*pi) * afun(t) *
-      stats::pt(q = -du(t) / afun(t), df = nup)
-  }
+    # Compute the integrals and output the results
+    #-----------------------------------------------------------------------------
+    If1 <- integrate_save(f1, xlims = c(x[1], x[length(x)]) ) +
+      ifelse(EC, f0(u(x[t0]) / sigma, lower.tail = lower.tail), 0)
 
-  # Compute the integrals and output the results
-  #-----------------------------------------------------------------------------
-  If1 <- integrate_save(f1, xlims = c(x[1], x[length(x)]) ) +
-    ifelse(EC, f0(u(x[t0]) / sigma, lower.tail = lower.tail), 0)
-
-  if(crossings == "down"){
-    If2 <- integrate_save(f2, xlims = c(x[1], x[length(x)]) )
-    return(If1 + If2 )
+    if(crossings == "down"){
+      If2 <- integrate_save(f2, xlims = c(x[1], x[length(x)]) )
+      return(If1 + If2 )
+    }else{
+      If3 <- integrate_save(f3, xlims = c(x[1], x[length(x)]) )
+      return(If1 - If3)
+    }
   }else{
-    If3 <- integrate_save(f3, xlims = c(x[1], x[length(x)]) )
-    return(If1 - If3)
+    # Formula for the t-field case
+    #---------------------------------------------------------------------------
+    # Get the formulas for the different integrands
+    #-----------------------------------------------------------------------------
+    nup = df + 1
+    # Add here the functions for the t-Kac-Rice formula
+    f0 <- function(t, lower.tail = lower.tail){
+      stats::pt(q = t, df = df, lower.tail = lower.tail)
+    }
+
+    f1 <- function(t){
+      tau(t) / (2*pi) * ( 1 + u(t)^2 / df )^(-nup / 2) *
+        ( 1 + du(t)^2 / ( df * tau(t)^2 * ( 1 + u(t)^2 / df )^2 ) )^(-N/2)
+    }
+
+    f2 <- function(t){
+      du(t) / (2*pi) *  ( 1 + u(t)^2 / df )^(-nup / 2)  *
+        (gamma(nup/2) / gamma((nup + 1) / 2)) * sqrt(nup*pi)  *
+        stats::pt(q = du(t) / ( 1 + u(t)^2 / df ) / tau(t), df = nup)
+    }
+
+    f3 <- function(t){
+      du(t) / (2*pi) *  ( 1 + u(t)^2 / df )^(-nup / 2)  *
+        (gamma(nup/2) / gamma((nup + 1) / 2)) * sqrt(nup*pi)  *
+        stats::pt(q = -du(t) / ( 1 + u(t)^2 / df ) / tau(t), df = nup)
+    }
+
+    # Compute the integrals and output the results
+    #-----------------------------------------------------------------------------
+    If1 <- integrate_save(f1, xlims = c(x[1], x[length(x)]) ) +
+      ifelse(EC, f0(u(x[t0]) / sigma, lower.tail = lower.tail), 0)
+
+    if(crossings == "down"){
+      If2 <- integrate_save(f2, xlims = c(x[1], x[length(x)]) )
+      return(If1 + If2 )
+    }else{
+      If3 <- integrate_save(f3, xlims = c(x[1], x[length(x)]) )
+      return(If1 - If3)
+    }
   }
 }
 

@@ -161,12 +161,14 @@ sim_SCoPES <- function(Msim, N, alpha, C, q.method, model, I = NULL,
 #' @return Standard error under the assumption the data is Gaussian
 #' @export
 sim_SCBs <- function(Msim, Nvec = c(20, 50, 100, 200),
-                     x, alpha = 0.1, q.method, model, mu.model, sd.model = NULL,
+                     x, alpha = 0.1, q.method,
+                     model, mu.model, sd.model = NULL,
                      est_tau = TRUE){
 
     local.cov    <- global.cov <- list()
     quantile.est <- tau.est    <- list()
     Timing       <- rep(NA, length(Nvec))
+    width.L1 <- width.L2 <- NULL
 
     subI <- sub.intervals(x, q.method$knots,
                           list(minus = rep(TRUE, length(x)),
@@ -213,7 +215,7 @@ sim_SCBs <- function(Msim, Nvec = c(20, 50, 100, 200),
         # Change the tau function to the estimate from the sample or keep the
         # truth
         if(est_tau){
-          q.method.Y$tau = q.method.Y$tau.est(R, x)
+          q.method.Y$tau = tau_est(R, x)
           tau = q.method.Y$tau
         }else{
           tau = q.method.Y$tau
@@ -233,9 +235,15 @@ sim_SCBs <- function(Msim, Nvec = c(20, 50, 100, 200),
           local.cov[[n]][,m] <- unlist(lapply(subI, function(l){
             all(SCB$loc.cov[l])
           } ))
+
+        # Get the Euler characteristic of the excursion sets above
+
           # Save other interesting quantities
-          quantile.est[[n]][,m] <- SCB$q
+          quantile.est[[n]][,m] <- SCB$SCB$q
           tau.est[[n]][,m]      <- tau(x)
+
+          width.L1 <- rbind(width.L1, SCB$width[, 1])
+          width.L2 <- rbind(width.L2, SCB$width[, 2])
         }
       }
       Ie <- Sys.time()
@@ -271,9 +279,13 @@ sim_SCBs <- function(Msim, Nvec = c(20, 50, 100, 200),
              na.sims     = na.sims,
              quantiles   = quantile.est,
              tau         = tau.est,
+             L1          = width.L1,
+             L2          = width.L2,
              time        = Timing,
              simSD       = sqrt(alpha*(1-alpha)/Msim)))
 }
+
+
 
 #' This functions simulates SCBs corresponding to an estimator and a set
 #' of functions given as a matrix with columns being the cut-off functions.
@@ -323,7 +335,7 @@ sim_SCBs_var <- function(Msim, Nvec = c(20, 50, 100, 200),
       # Change the tau function to the estimate from the sample or keep the
       # truth
       if(est_tau){
-        tau = q.method.Y$tau.est(R, x)
+        tau = q.method.Y$tau_est(R, x)
       }else{
         tau = q.method.Y$tau
       }
@@ -387,6 +399,8 @@ sim_SCBs_var <- function(Msim, Nvec = c(20, 50, 100, 200),
               time        = Timing,
               simSD       = sqrt(alpha*(1-alpha)/Msim)))
 }
+
+
 
 #' This functions computes the SCoPES corresponding to an estimator and a set
 #' of functions given as a matrix with columns being the cut-off functions.
@@ -555,7 +569,7 @@ sim_SCB_sd <- function(Msim,
         q.method.Y$R = R
 
         # Estimate tau
-        tau = q.method.Y$tau.est(R, x)
+        tau = q.method.Y$tau_est(R, x)
       }else{
         tau = model$tau
       }
