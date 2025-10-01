@@ -7,13 +7,12 @@
 # Required packages:
 #
 # Contained functions:
-#      - Fair_quantile_boot() (removed)
-#      - Optimize_Fair_quantile_boot() (removed)
 #      - fair_Bootstrap()
 #      - fair_quantile_boot()
-#      - alg1_KR_t()
-#      - alg1_KR_const()
-#      - fair_quantile_EEC_t()
+#      - quantile_KRF()
+#      - fair_quantile_KRF()
+#      - alg1_KRF_t()
+#      - alg1_KRF_const()
 #      - alg1_z_DL()
 #------------------------------------------------------------------------------#
 # Developer notes:
@@ -256,6 +255,307 @@ fair_quantile_boot <- function(alpha, x, samples,
 #-------------------------------------------------------------------------------
 # Kac Rice Algorithms
 #-------------------------------------------------------------------------------
+#' Find an optimal quantile function q in a basis by minimizing the L1/L2 norm
+#' under constraints given by a Kac-Rice Formula.
+#'
+#' @param coef array of dimension K x N containing N-realizations of
+#'  a random field over a 1-dimensional domain.
+#' @param basis an basis object from fda package
+#' @return vector of length 2 containing the L1 norm and square of the L2 norm
+#' of the function defined by coef and basis
+#' @export
+quantile_KRF <- function(alpha, tau, basis, type = "t", df = NULL,
+                         loss_type     = c(0, 1, 0.1, 0),
+                         knots         = c(0, 1),
+                         alpha_weights = rep(1 / (length(knots) - 1), length(knots) - 1),
+                         print = TRUE){
+  # Initialize output
+  summary <- list()
+  # Get the necessary parameters from the input
+  #-----------------------------------------------------------------------------
+  # Get the amount of intervals
+  NI = length(knots)-1
+  # Get the correct KRF formula
+  if(type == "t"){
+    KRF <- function(u, du, x){
+      KacRice_t( df = df,
+                 tau = tau,
+                 u   = u,
+                 du  = du,
+                 x   = x,
+                 crossings = "up", t0 = 1, sigma = 1,
+                 lower.tail = FALSE, EC = TRUE
+      )
+    }
+  }
+
+  # Get the starting value for the minimization
+  #-----------------------------------------------------------------------------
+  KRFu_up = function(y){
+    KRF(u  = Vectorize(function(x) y),
+        du = Vectorize(function(x) 0),
+        x  = knots[c(1, NI+1)]) - alpha
+  }
+  tt = uniroot(f = KRFu_up, interval = c(0,10))
+
+  # Currently assumes basis to be B-splines
+  x0 <- c(1, rep(tt$root, basis$nbasis))
+  q0 <- fd(coef = x0[-1], basisobj = basis)
+
+  # Define the width loss
+  #-----------------------------------------------------------------------------
+  WidthLoss <- function(x){
+    # get the function u and its derivatives
+    u   <- fd(coef = x[-1], basisobj = basis)
+    du  <- deriv.fd(u, Lfd = 1)
+    d2u <- deriv.fd(u, Lfd = 2)
+
+    # initialize the output
+    out = 0
+
+    if(loss_type[1] != 0){
+      # Funktion, die an t den absoluten Funktionswert zurückgibt
+      f_abs <- function(t) abs(eval.fd(t, u))
+
+      out = out + integrate(f_abs, lower = 0, upper = 1)$value
+    }
+
+    if(loss_type[2] != 0){
+      out = out + inprod(u, u)
+    }
+
+    if(loss_type[3] != 0){
+      out = out + loss_type[3] * inprod(du, du)
+    }
+
+    if(loss_type[4] != 0){
+      out = out + loss_type[4] * inprod(d2u, d2u)
+    }
+    out
+  }
+
+  # Define the different constraints
+  #-----------------------------------------------------------------------------
+  # equality constraints
+  KRF_constraint <- function(x) {
+    q  <- fd(coef = x[-1], basisobj = basis)
+    dq <- deriv.fd(q, Lfd = 1)
+    u  = function(y){ as.vector(eval.fd(evalarg = y, fdobj = q)) }
+    du = function(y){ as.vector(eval.fd(evalarg = y, fdobj = dq)) }
+
+    if(NI == 1){
+      constraints <- KRF(u, du, x = c(knots[1], knots[NI+1])) - alpha
+    }else{
+      # inner knots
+      xx = knots[-c(1, NI+1)]
+
+      constraints <- c(vapply(1:NI, function(i)
+        KRF(u, du, x = c(knots[i], knots[i+1])) - x[1]*alpha_weights[i]*alpha,
+        FUN.VALUE = pi),
+        sum(pnorm(u(xx), lower.tail = FALSE)) - (x[1]-1) * alpha)
+    }
+
+    # Output the evalated constraints
+    constraints
+  }
+
+  # Inequality constraint
+  # Computes the inequality constraint on the parameter c, i.e. x[1].
+  ineq_constraint <- function(x) {
+    1 - x[1]
+  }
+
+  if( !is.null(loss_type) ){
+    # Optimization
+    #-----------------------------------------------------------------------------
+    res <- nloptr(
+      x0 = x0,
+      eval_f = WidthLoss,
+      eval_g_eq = KRF_constraint,
+      eval_g_ineq = ineq_constraint,
+      opts = list(
+        algorithm = "NLOPT_LN_COBYLA", #  "NLOPT_LD_SLSQP", # "NLOPT_LD_MMA", #
+        tol_eq = 1e-4,
+        tol_ineq = 1e-4,
+        maxeval = 500,
+        xtol_rel = 1e-2,
+        ftol_rel = 1e-2,
+        print_level = 0
+      )
+    )
+
+    # Summarize results
+    #-----------------------------------------------------------------------------
+    summary[["results"]] <- res
+
+    u_optim = res$solution
+    q = fd(coef = u_optim[-1], basisobj = basis)
+    dq = deriv.fd(q, Lfd = 1)
+    u  = function(y){ as.vector(eval.fd(evalarg = y, fdobj = q)) }
+    du = function(y){ as.vector(eval.fd(evalarg = y, fdobj = dq)) }
+
+    summary[["u"]]  <- u
+    summary[["du"]] <- du
+
+    # Get the constraints for the optimized function to check whether they are satisfied
+    if(NI > 1){
+      constraints_check = round(c(KRF_constraint(u_optim),
+                                  KRF(u, du, x = knots[c(1, NI+1)])), 4)
+      names(constraints_check) <- c(paste("err:", 1:NI, sep=""), "ErrTot", "KRF")
+    }else{
+      constraints_check = round(c(KRF_constraint(u_optim),
+                                  KRF(u, du, x = knots[c(1, NI+1)])), 4)
+      names(constraints_check) <- c("ErrTot", "KRF")
+    }
+    summary[["constraints_check"]] <- constraints_check
+
+    # Get the L1 and L2 indicators before and after minimization
+    WidthSCB <- matrix(0, nrow = 3, ncol = 2)
+    colnames(WidthSCB) <- c("L1", "L2")
+    rownames(WidthSCB) <- c("start", "opt", "rel. improv.")
+    WidthSCB[1,] <- L1L2_loss(x0[-1], basis = basis)
+    WidthSCB[2,] <- L1L2_loss(res$solution[-1], basis = basis)
+    WidthSCB[3,] <- round(100*(diff(WidthSCB)[1,]/WidthSCB[1,]),2)
+
+    summary[["WidthSCB"]] <- WidthSCB
+
+    # Plot the tau function and the optimized quantile
+    if(print == TRUE){
+      eval_pts = seq(knots[1], knots[NI+1], length.out=100)
+      par(mfrow = c(1,2))
+      plot(eval_pts, tau(eval_pts),
+           main = "tau function", type = "l",
+           xlab = "", ylab = "", lwd = 2)
+      abline(v = knots, lty = 2, col = "grey70")
+
+      plot(q, main = paste("Threshold Function,\n rel. gain: L1=", summary$WidthSCB[3,1],
+                           ", L2=", summary$WidthSCB[3,2]), lwd = 2)
+      abline(v = knots, lty = 2, col = "grey70")
+      abline(h = tt$root, col = "red", lwd = 2)
+      legend("topleft", legend = c("Start", "Optim."),
+             col = c("red", "black"), lty = 1, lwd = 2,
+             bg = "transparent",  bty = "n")
+    }
+  }else{
+    u  <- Vectorize(function(x) tt$root)
+    du <- Vectorize(function(x) 0)
+    summary[["u"]]  <- u
+    summary[["du"]] <- du
+
+    # Get the constraints for the optimized function to check whether they are satisfied
+    if(NI > 1){
+      constraints_check = round(c(KRF_constraint(x0),
+                                  KRF(df, tau, u, du, x = knots[c(1, NI+1)], t0 = 1)), 4)
+      names(constraints_check) <- c(paste("err:", 1:NI, sep=""), "ErrTot", "KRF")
+    }else{
+      constraints_check = round(c(KRF_constraint(x0),
+                                  KRF(df, tau, u, du, x = knots[c(1, NI+1)], t0 = 1)), 4)
+      names(constraints_check) <- c("ErrTot", "KRF")
+    }
+    summary[["constraints_check"]] <- constraints_check
+
+    WidthSCB <- matrix(0, nrow = 1, ncol = 2)
+    colnames(WidthSCB) <- c("L1", "L2")
+    rownames(WidthSCB) <- c("u")
+    WidthSCB[1,] <- L1L2_loss(x0[-1], basis = basis)
+    summary[["WidthSCB"]] <- WidthSCB
+  }
+
+  summary
+}
+
+#' This functions computes the SCoPES corresponding to an estimator and a set
+#' of functions given as a matrix with columns being the cut-off functions.
+#'
+#' @inheritParams SCoPES
+#' @return Standard error under the assumption the data is Gaussian
+#' @export
+fair_quantile_KRF <- function(alpha, tau, x = seq(0, 1, length.out = 2), df = NULL,
+                              knots     = range(x),
+                              I_weights = rep(1/(length(knots) - 1), length(knots) - 1),
+                              u.type    = "linear",
+                              type      = "t",
+                              sigma     = 1,
+                              alpha_up  = alpha*(length(knots)-1),
+                              maxIter   = 20,
+                              tol       = alpha / 10){
+  # Get the correct KRF formula
+  if(type == "t"){
+    KRF <- function(u, du, x){
+      KacRice_t( df = df,
+                 tau = tau,
+                 u   = u,
+                 du  = du,
+                 x   = x,
+                 crossings = "up", t0 = 1, sigma = 1,
+                 lower.tail = FALSE, EC = TRUE
+      )
+    }
+  }
+  # Get the correct algorithm 1 for the class of u and whether SCoPES or SCBs
+  # are computed
+  if(u.type == "linear" || u.type == "constant"){
+    if(u.type == "linear"){
+      alg1 <- function(alpha, tau){
+        alg1_KRF( alpha, tau = tau, df = df,
+                  type = type, knots = knots,
+                  I_weights = I_weights, sigma = sigma)
+      }
+    }else{
+      alg1 <- function(alpha, tau){
+        alg1_KRF_const( alpha, tau = tau, df = df,
+                        type = type, knots = knots,
+                        I_weights = I_weights, sigma = sigma)
+      }
+    }
+    # Initialize the u function
+    alpha_k = alpha
+    ufcns  <- alg1(alpha_k, tau)
+
+    # Find how far away u is from an alpha quantile
+    diff <- KRF(u = ufcns$u, du = ufcns$du, x = range(knots)) - alpha
+
+    niter   = 0
+    if(abs(diff) > tol & maxIter != 0){
+      alpha_k = alpha_up
+      ufcns  <- alg1(alpha_k, tau)
+
+      diff <- KRF(u = ufcns$u, du = ufcns$du, x = range(knots)) - alpha
+
+      if(abs(diff) > tol){
+        a = c(alpha, alpha_up)
+
+        while(niter < maxIter & abs(diff) > tol){
+          if(niter < 3){
+            alpha_k = a[1]*0.8 + a[2]*0.2
+          }else{
+            alpha_k = mean(a)
+          }
+
+          ufcns <- alg1(alpha_k, tau)
+
+          diff <- KRF(u = ufcns$u, du = ufcns$du, x = range(knots)) - alpha
+
+          if(diff < 0){
+            a[1] = alpha_k
+          }else{
+            a[2] = alpha_k
+          }
+          niter = niter + 1
+        }
+      }
+    }else{
+
+    }
+  }else{
+    KRF(u, du, x)
+  }
+
+  return(list(u = ufcns$u, du = ufcns$du, alpha_loc = alpha_k*I_weights,
+              alpha_global = diff+alpha, niter = niter))
+}
+
+
 #' Find an optimal piecewise linear quantile function q to remove
 #' conservativeness of standard Kac Rice formula approach for fair
 #' thresholds.
@@ -269,9 +569,21 @@ fair_quantile_boot <- function(alpha, x, samples,
 #'   thresholding function with respect to the sample.
 #' }
 #' @export
-alg1_KR_t <- function(alpha, knots, tau, df = NULL,
-                       I_weights = rep(1/(length(knots) - 1), length(knots) - 1),
-                       sigma = 1){
+alg1_KRF <- function(alpha, knots, tau, df = NULL, type = "t",
+                     I_weights = rep(1/(length(knots) - 1), length(knots) - 1),
+                     sigma = 1){
+  # Get the correct KRF formula
+  if(type == "t"){
+    KRF <- function(u, du, x, crossings, t0){
+      KacRice_t( df = df,
+                 tau = tau,
+                 u   = u,
+                 du  = du,
+                 x   = x,
+                 crossings = crossings, t0 = t0, sigma = 1,
+                 lower.tail = FALSE, EC = TRUE)
+    }
+  }
   # Get the amount of Intervals
   K <- length(I_weights)
   # Initialize the parameters for the piecewise linear function on each Interval
@@ -280,11 +592,10 @@ alg1_KR_t <- function(alpha, knots, tau, df = NULL,
   ##############################################################################
   # Find constant for first interval
   find_u0 <- function(u0){
-    GeneralKacRice_t(tau = tau,
-          u  = function(y){rep(u0, length(y))},
-          du = function(y){rep(0, length(y))}, x = c(knots[1], knots[2]),
-          df = df,
-          sigma = sigma, crossings = "down", t0 = 2) - alpha * I_weights[1]
+                  KRF(u  = function(y){rep(u0, length(y))},
+                      du = function(y){rep(0, length(y))},
+                      x  = c(knots[1], knots[2]),
+                      crossings = "down", t0 = 2) - alpha * I_weights[1]
   }
   # slope =0 on the first interval
   u_fun[2, 1] <- 0
@@ -307,9 +618,11 @@ alg1_KR_t <- function(alpha, knots, tau, df = NULL,
 
       # Function to minimize to get slope
       find_mk <- function(mk){
-        GeneralKacRice_t(tau, u = function(y){u_fun[1, 2*k-2] + mk*(y - knots[2*k-2])},
-              du = function(y){rep(mk, length(y))}, x = c(knots[2*k-2], knots[2*k-1]),
-              sigma = sigma, df = df, crossings = "up", t0 = 1) - alpha * I_weights[2*k-2]
+        KRF(u = function(y){u_fun[1, 2*k-2] + mk*(y - knots[2*k-2])},
+            du = function(y){rep(mk, length(y))},
+            x = c(knots[2*k-2], knots[2*k-1]),
+            crossings = "up",
+            t0 = 1) - alpha * I_weights[2*k-2]
       }
       u_fun[2, 2*k-2] <- uniroot(f = find_mk, interval = c(-20, 20), extendInt = "downX")$root
 
@@ -325,10 +638,9 @@ alg1_KR_t <- function(alpha, knots, tau, df = NULL,
 
       # Function to minimize to get slope
       find_mk2 <- function(mk){
-        GeneralKacRice_t(tau,
-              u  = function(y){u_fun[1, 2*k-1] + mk*(y - knots[2*k-1])},
-              du = function(y){rep(mk, length(y))}, x = c(knots[2*k-1], knots[2*k]),
-              sigma = sigma, df = df, crossings = "down", t0=2) - alpha * I_weights[2*k-1]
+        KRF(u  = function(y){u_fun[1, 2*k-1] + mk*(y - knots[2*k-1])},
+            du = function(y){rep(mk, length(y))}, x = c(knots[2*k-1], knots[2*k]),
+            crossings = "down", t0 = 2) - alpha * I_weights[2*k-1]
       }
       u_fun[2, 2*k-1] <- uniroot(f = find_mk2, interval = c(-20, 20), extendInt = "downX")$root
 
@@ -349,9 +661,10 @@ alg1_KR_t <- function(alpha, knots, tau, df = NULL,
     }
     # Function to minimize
     find_mK <- function(mK){
-      GeneralKacRice_t(tau, u = function(y){u_fun[1, K] + mK*(y - knots[K])},
-            du = function(y){rep(mK, length(y))}, x = c(knots[K], knots[K+1]),
-            df = df, sigma = sigma, crossings = "up") - alpha * I_weights[K]
+      KRF(u = function(y){u_fun[1, K] + mK*(y - knots[K])},
+          du = function(y){rep(mK, length(y))},
+          x = c(knots[K], knots[K+1]),
+          crossings = "up", t0 = 1) - alpha * I_weights[K]
     }
     u_fun[2,K] <- uniroot(f = find_mK, interval = c(-20, 20))$root
 
@@ -384,9 +697,22 @@ alg1_KR_t <- function(alpha, knots, tau, df = NULL,
 #'   thresholding function with respect to the sample.
 #' }
 #' @export
-alg1_KR_const <- function(alpha, tau, df = NULL, knots,
+alg1_KRF_const <- function(alpha, tau, df = NULL, type = "t", knots,
                            I_weights = rep(1/(length(knots) - 1), length(knots) - 1),
                            sigma = 1){
+  # Get the correct KRF formula
+  if(type == "t"){
+    KRF <- function(u, du, x, crossings, t0){
+      KacRice_t( df = df,
+                 tau = tau,
+                 u   = u,
+                 du  = du,
+                 x   = x,
+                 crossings = crossings, t0 = t0, sigma = 1,
+                 lower.tail = FALSE, EC = TRUE
+      )
+    }
+  }
   # Get the amount of Intervals
   K <- length(I_weights)
   # Initialize the parameters for the piecewise linear function on each Interval
@@ -398,10 +724,10 @@ alg1_KR_const <- function(alpha, tau, df = NULL, knots,
   # Find constant for first interval
   for(k in 1:K){
     find_u0 <- function(u0){
-      GeneralKacRice_t(tau = tau,
-            u = function(y){rep(u0, length(y))},
-            du = function(y){rep(0, length(y))}, x = c(knots[k], knots[k+1]),
-            df = df, sigma = sigma, crossings = "up", t0 = 1) - alpha * I_weights[k]
+      KRF(u = function(y){rep(u0, length(y))},
+          du = function(y){rep(0, length(y))},
+          x = c(knots[k], knots[k+1]),
+          crossings = "up", t0 = 1) - alpha * I_weights[k]
     }
     # get the constant on the first interval
     u_fun[k] <- uniroot(f = find_u0, interval = c(0, 50), extendInt = "downX")$root
@@ -419,99 +745,6 @@ alg1_KR_const <- function(alpha, tau, df = NULL, knots,
   return(list( u = function(t){  ufun(t, c_v = u_fun, knots = knots) },
                du = function(t){ dufun(t, c_v = rep(0,K), knots = knots) }))
 }
-
-
-#' This functions computes the SCoPES corresponding to an estimator and a set
-#' of functions given as a matrix with columns being the cut-off functions.
-#'
-#' @inheritParams SCoPES
-#' @return Standard error under the assumption the data is Gaussian
-#' @export
-fair_quantile_KRF <- function(alpha, tau, x = seq(0, 1, length.out = 2), df = NULL,
-                                crit.set  = list(minus = rep(T, length(x)),
-                                                 plus  = rep(T, length(x))),
-                                knots     = range(x),
-                                I_weights = rep(1/(length(knots) - 1), length(knots) - 1),
-                                type      = "linear",
-                                sigma     = 1,
-                                alpha_up  = alpha*(length(knots)-1),
-                                maxIter   = 20,
-                                tol       = alpha / 10){
-  # Get the correct algorithm 1 for the class of u and whether SCoPES or SCBs
-  # are computed
-  if(all(crit.set$minus) | all(crit.set$plus)){
-    if(type == "linear"){
-      alg1 <- alg1_KR_t
-    }else{
-      alg1 <- alg1_KR_const
-    }
-  }else{
-    knots     <- adapt_knots(knots, crit.set)
-    I_weights <- adapt_Iweights(I_weights, crit.set)
-
-    alg1 <- alg1_KR_t_pw
-  }
-
-
-  # Initialize the u function
-  alpha_k = alpha
-  ufcns  <- alg1(alpha = alpha_k, tau = tau, df = df,
-                 knots = knots, I_weights = I_weights,
-                 sigma = sigma)
-
-  diff <- GeneralKacRice_t(tau = tau,
-                           u   = ufcns$u,
-                           du  = ufcns$du,
-                           df  = df,
-                           x   = range(knots),
-                           crossings = "up",
-                           t0  = 1) - alpha
-
-  niter   = 0
-  if(abs(diff) > tol & maxIter != 0){
-
-    alpha_k = alpha_up
-    ufcns  <- alg1(alpha = alpha_k, tau = tau, df = df,
-                   knots = knots, I_weights = I_weights,
-                   sigma = sigma)
-
-    diff <- GeneralKacRice_t(tau = tau, u = ufcns$u, du = ufcns$du,
-                             df = df, x = range(knots),
-                             crossings = "up", t0 = 1) - alpha
-
-    if(abs(diff) > tol){
-      a = c(alpha, alpha_up)
-
-      while(niter < maxIter & abs(diff) > tol){
-        if(niter < 3){
-          alpha_k = a[1]*0.8 + a[2]*0.2
-        }else{
-          alpha_k = mean(a)
-        }
-
-        ufcns <- alg1(alpha = alpha_k, tau = tau, df = df,
-                      knots = knots, I_weights = I_weights,
-                      sigma = sigma)
-
-        diff <- GeneralKacRice_t(tau = tau, u = ufcns$u, du = ufcns$du,
-                                 df = df, x = range(knots),
-                                 crossings = "up", t0 = 1) - alpha
-
-        if(diff < 0){
-          a[1] = alpha_k
-        }else{
-          a[2] = alpha_k
-        }
-        niter = niter + 1
-      }
-    }
-  }else{
-
-  }
-  return(list(u = ufcns$u, du = ufcns$du, alpha_loc = alpha_k*I_weights,
-              alpha_global = diff+alpha, niter = niter))
-}
-
 
 
 #' This function is only here for comparison with the implementation of
@@ -632,3 +865,4 @@ alg1_z_DL <- function (tau, diag.cov=rep(1, length(tau)), conf.level = 0.95, n_i
   band <- band.eval * sqrt(diag.cov)
   return(band)
 }
+

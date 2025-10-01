@@ -52,18 +52,6 @@ KacRice_t <- function(df, tau, u, du, x,
         pnorm(q = -du(t) / sigma / tau(t))
     }
 
-    # Compute the integrals and output the results
-    #-----------------------------------------------------------------------------
-    If1 <- integrate_save(f1, xlims = c(x[1], x[length(x)]) ) +
-      ifelse(EC, f0(u(x[t0]) / sigma, lower.tail = lower.tail), 0)
-
-    if(crossings == "down"){
-      If2 <- integrate_save(f2, xlims = c(x[1], x[length(x)]) )
-      return(If1 + If2 )
-    }else{
-      If3 <- integrate_save(f3, xlims = c(x[1], x[length(x)]) )
-      return(If1 - If3)
-    }
   }else{
     # Formula for the t-field case
     #---------------------------------------------------------------------------
@@ -76,34 +64,32 @@ KacRice_t <- function(df, tau, u, du, x,
     }
 
     f1 <- function(t){
-      tau(t) / (2*pi) * ( 1 + u(t)^2 / df )^(-nup / 2) *
-        ( 1 + du(t)^2 / ( df * tau(t)^2 * ( 1 + u(t)^2 / df )^2 ) )^(-N/2)
+      tau(t) / (2*pi) / ( 1 + u(t)^2 / df )^( (df-1) / 2) * ( 1 + du(t)^2/tau(t)^2 * 1 / ( df * ( 1 + u(t)^2 / df )^2 ) )^(-df/2)
     }
 
     f2 <- function(t){
-      du(t) / (2*pi) *  ( 1 + u(t)^2 / df )^(-nup / 2)  *
-        (gamma(nup/2) / gamma((nup + 1) / 2)) * sqrt(nup*pi)  *
-        stats::pt(q = du(t) / ( 1 + u(t)^2 / df ) / tau(t), df = nup)
+      du(t) / sqrt(df*pi) /  ( 1 + u(t)^2 / df )^(nup / 2)  *
+        (gamma((df+1)/2) / gamma(df / 2)) *
+        stats::pt(q = sqrt((df+1)/df) * du(t) / ( 1 + u(t)^2 / df ) / tau(t), df = nup)
     }
 
     f3 <- function(t){
-      du(t) / (2*pi) *  ( 1 + u(t)^2 / df )^(-nup / 2)  *
-        (gamma(nup/2) / gamma((nup + 1) / 2)) * sqrt(nup*pi)  *
-        stats::pt(q = -du(t) / ( 1 + u(t)^2 / df ) / tau(t), df = nup)
+      du(t) / sqrt(df*pi) /  ( 1 + u(t)^2 / df )^(nup / 2)  *
+        (gamma(nup/2) / gamma(df / 2)) *
+        stats::pt(q = -sqrt((df+1)/df) * du(t) / ( 1 + u(t)^2 / df ) / tau(t), df = nup)
     }
+  }
+  # Compute the integrals and output the results
+  #-----------------------------------------------------------------------------
+  If1 <- integrate_save(f1, xlims = c(x[1], x[length(x)]) ) +
+    ifelse(EC, f0(u(x[t0]) / sigma, lower.tail = lower.tail), 0)
 
-    # Compute the integrals and output the results
-    #-----------------------------------------------------------------------------
-    If1 <- integrate_save(f1, xlims = c(x[1], x[length(x)]) ) +
-      ifelse(EC, f0(u(x[t0]) / sigma, lower.tail = lower.tail), 0)
-
-    if(crossings == "down"){
-      If2 <- integrate_save(f2, xlims = c(x[1], x[length(x)]) )
-      return(If1 + If2 )
-    }else{
-      If3 <- integrate_save(f3, xlims = c(x[1], x[length(x)]) )
-      return(If1 - If3)
-    }
+  if(crossings == "down"){
+    If2 <- integrate_save(f2, xlims = c(x[1], x[length(x)]) )
+    return(If1 + If2 )
+  }else{
+    If3 <- integrate_save(f3, xlims = c(x[1], x[length(x)]) )
+    return(If1 - If3)
   }
 }
 

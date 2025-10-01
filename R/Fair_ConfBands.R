@@ -5,10 +5,8 @@
 #------------------------------------------------------------------------------#
 # Contained functions:
 # - fairSCB()
-# - fairSCB()
-# - SCoPES()
+# - fairSCB_var()
 # - plot_SCoPES()
-# - fairSCB()
 #------------------------------------------------------------------------------#
 # Developer notes:
 #
@@ -45,13 +43,25 @@ fairSCB <- function(alpha, hatmu, hatrho, tN,
     if(is.infinite(q)){
       q = 0
     }
+
+    width           <- matrix(0, nrow = 1, ncol = 2)
+    colnames(width) <- c("L1", "L2")
+    rownames(width) <- c("u")
+    width[1,]       <- c(q,q) * diff(range(x))
+
+    u <- Vectorize(function(x) q)
+    q <- u(x)
+
+    # Preapare the output function
+    out = list()
+
   }else if(q.method$name == "fair.mboot"){
     samples = MultiplierBootstrapSplit(alpha   = alpha,
                                        R       = q.method$R,
                                        minus   = crit.set$minus,
                                        plus    = crit.set$plus,
                                        Mboots  = q.method$Mboots,
-                                       method  = q.method$Boottype,
+                                       method  = q.method$type,
                                        weights = q.method$weights)$samples
     if( !(all(!crit.set$minus) && all(!crit.set$plus)) ){
       fair.q = fair_quantile_boot(alpha  = alpha,
@@ -63,19 +73,22 @@ fairSCB <- function(alpha, hatmu, hatrho, tN,
                                   type      = q.method$type,
                                   alpha_up  = q.method$alpha_up,
                                   maxIter   = q.method$maxIter)
-
+      u = fair.q$u
       width           <- matrix(0, nrow = 1, ncol = 2)
       colnames(width) <- c("L1", "L2")
       rownames(width) <- c("u")
 
-      width[1,] <- c(integrate(function(t) abs(u(t)), lower = 0, upper = 1)$value,
-                     integrate(function(t) abs(u(t)), lower = 0, upper = 1)$value)
+      width[1,] <- c(integrate(function(t) abs(u(t)),   lower = 0, upper = 1)$value,
+                     sqrt(integrate(function(t) abs(u(t))^2, lower = 0, upper = 1)$value))
 
       q = u(x)
     }else{
       fair.q = NULL
       q = rep(0, length(x))
     }
+
+    # Preapare the output function
+    out = list()
 
   }else if(q.method$name == "KRF_fair"){
     if(type == "two-sided"){
@@ -88,7 +101,7 @@ fairSCB <- function(alpha, hatmu, hatrho, tN,
                           df        = q.method$df,
                           knots     = q.method$knots,
                           I_weights = q.method$I_weights,
-                          u.type    = "linear",
+                          u.type    = q.method$u.type,
                           alpha_up  = q.method$alpha_up,
                           maxIter   = q.method$maxIter,
                           tol       = alpha / 100)$u
@@ -97,10 +110,13 @@ fairSCB <- function(alpha, hatmu, hatrho, tN,
     colnames(width) <- c("L1", "L2")
     rownames(width) <- c("u")
 
-    width[1,] <- c(integrate(function(t) abs(u(t)), lower = 0, upper = 1)$value,
-                   integrate(function(t) abs(u(t)), lower = 0, upper = 1)$value)
+    width[1,] <- c(integrate(function(t) abs(u(t)),   lower = 0, upper = 1)$value,
+                   sqrt(integrate(function(t) abs(u(t))^2, lower = 0, upper = 1)$value))
 
     q = u(x)
+
+    # Preapare the output function
+    out <- list()
 
   }else if(q.method$name == "KRF_nonfair"){
     if(type == "two-sided"){
@@ -108,9 +124,8 @@ fairSCB <- function(alpha, hatmu, hatrho, tN,
     }
 
     q = RFT::GKFthreshold( alpha = alpha,
-                           LKC = c(1, integrate(q.method$tau,
-                                                lower = x[1],
-                                                upper = x[length(x)])$val),
+                           LKC = c(1, integrate_save(q.method$tau,
+                                                xlims = c(x[1], x[length(x)]))),
                            type = q.method$type,
                            df   = q.method$df,
                            interval = c(0, 100) )$threshold
@@ -122,6 +137,9 @@ fairSCB <- function(alpha, hatmu, hatrho, tN,
 
     u <- Vectorize(function(x) q)
     q <- u(x)
+
+    # Preapare the output function
+    out <- list()
 
   }else if(q.method$name == "KRF_min"){
     if(type == "two-sided"){
@@ -136,10 +154,14 @@ fairSCB <- function(alpha, hatmu, hatrho, tN,
                      knots     = q.method$knots,
                      alpha_weights = q.method$alpha_weights,
                      print = FALSE)
+
     q <- thresh$u(x)
 
     width = thresh$WidthSCB
     u     = thresh$u
+
+    out <- list()
+    out$constraints_check = thresh$constraints_check
   }
 
   SCB = data.frame(
@@ -158,14 +180,16 @@ fairSCB <- function(alpha, hatmu, hatrho, tN,
 
   # Output
   if(is.null(mu)){
-    return(list(SCB = SCB, width = width, u = u))
+    return(c(out,
+             list(SCB = SCB, width = width, u = u)))
   }else{
     loc.cov = abs(mu - hatmu) <= q*tN*hatrho
     SCB$mu  = mu
     # Note that the coverage only works for two-sided!
-    return(list(SCB = SCB, width = width, u = u,
+    return(c(out,
+             list(SCB = SCB, width = width, u = u,
                 loc.cov  = loc.cov,
-                glob.cov = all(loc.cov)))
+                glob.cov = all(loc.cov))))
   }
 }
 
@@ -178,7 +202,6 @@ fairSCB <- function(alpha, hatmu, hatrho, tN,
 fairSCB_var <- function(alpha, hatvar,
                         x = seq(0, 1, length.out = length(hatvar)),
                         q.method, type = "two-sided", true_var = NULL, subI = NULL){
-
   #---------------------------------------------------------------------------
   # Estimate the quantile funcion q.
   fair.q = NULL

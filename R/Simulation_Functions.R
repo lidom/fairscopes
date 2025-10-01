@@ -4,156 +4,12 @@
 #                                                                              #
 #------------------------------------------------------------------------------#
 # Contained functions:
-# - sim_SCoPES()
 # - sim_SCBs()
 #------------------------------------------------------------------------------#
 # Developer notes:
 # - Fix the documentation and man pages
 #
 #------------------------------------------------------------------------------#
-#' This functions computes the SCoPES corresponding to an estimator and a set
-#' of functions given as a matrix with columns being the cut-off functions.
-#'
-#' @inheritParams SCoPES
-#' @return Standard error under the assumption the data is Gaussian
-#' @export
-sim_SCoPES <- function(Msim, N, alpha, C, q.method, model, I = NULL,
-                       inclusion = list(L = "inequal", U = "inequal")){
-  # Dimension of the tube defining matrix
-  dC    = dim(C)
-  if(is.null(dC)){
-    dC <- c(length(C), 1)
-  }
-  # Get standard values for the indices of C^\pm if not specified
-  if(is.null(I)){
-    if(SCoPEStype %in% c( "extraction", "relevance", "lrelevance",
-                          "equivalence", "lequivalence")){
-      Iminus <- seq(1, dC[2], 2)
-      Iplus  <- seq(2, dC[2], 2)
-    }else{
-      Iminus <- 1:dC[2]
-      Iplus  <- 1:dC[2]
-    }
-    I = list(minus = Iminus, plus = Iplus)
-  }else if(is.list(I)){
-    if(length(I) == 2){
-      Iminus = I$minus
-      Iminus = I$plus
-    }else{
-      stop("I must be a list with two entries indicating which columns of
-           C belong to C^- and which to C^+")
-    }
-  }else{
-    stop("I must be a list with two entries indicating which columns of
-           C belong to C^- and which to C^+")
-  }
-
-  contain <- 0
-  hatq    <- rep(NaN, Msim)
-  hatmu1C <- list(minus = matrix(FALSE, length(model$x), Msim),
-                  plus  = matrix(FALSE, length(model$x), Msim))
-  Lcontain <- Ucontain <- matrix(FALSE, length(model$x), Msim)
-  detectL  <- array(FALSE, dim = c(dC[1], length(Iminus), Msim))
-  detectU  <- array(FALSE, dim = c(dC[1], length(Iplus), Msim))
-  NDetect_BH <- NDetect_hommel <- NDetect_sidak <- NDetect  <-  matrix(NaN, 2, Msim)
-
-  for(m in 1:Msim){
-    # Get the sample for the simulation run
-    Y = SampleFields::SignalPlusNoise(N,
-                                      x = model$x,
-                                      mu = model$mu,
-                                      noise = model$noise,
-                                      sigma = model$sigma)
-    Y = Y$values
-    # Get the residuals
-    R = Y - rowMeans(Y)
-    q.method$R = R
-
-    # Estimate the mean and sd
-    hatmu = rowMeans(Y)
-    if(model$truesigma){
-      hatsigma = model$sigma(model$x)
-    }else{
-      hatsigma = apply(Y, 1, sd)
-    }
-
-    if(!is.null(q.method$mu1Cest)){
-      if(q.method$mu1Cest == "m0"){
-        pvals <- apply(Y, 1, function(v) t.test(x = v,
-                                                alternative = "two.sided",
-                                                conf.level = 1-alpha)$p.value)
-        q.method$m0 = min(2*sum(pvals >= 0.5), length(pvals))
-      }
-    }
-
-    # Get the SCoPES for the method
-    res_m <- SCoPES(alpha = alpha, C = C, x = model$x, hatmu = hatmu,
-                    hatsigma = hatsigma, tN = 1 / sqrt(N),
-                    q.method = q.method,
-                    inclusion = inclusion, mu = model$mu(model$x))
-
-    # Save the useful variables from the simulation
-    hatq[m]    <- res_m$q
-    if(!is.null(q.method$mu1Cest)){
-      if(q.method$mu1Cest == "m0"){
-        hatmu1C$minus[, m] <- rep(T, length(model$x))
-        hatmu1C$plus[, m]  <- rep(T, length(model$x))
-      }else{
-        hatmu1C$minus[, m] <- res_m$hatmu1C$minus
-        hatmu1C$plus[, m]  <- res_m$hatmu1C$plus
-      }
-    }else{
-      hatmu1C$minus[, m] <- res_m$hatmu1C$minus
-      hatmu1C$plus[, m]  <- res_m$hatmu1C$plus
-    }
-    detectL[,, m]      <- res_m$hatLC
-    detectU[,, m]      <- res_m$hatUC
-    Lcontain[, m]      <- res_m$Lcontain_loc
-    Ucontain[, m]      <- res_m$Ucontain_loc
-    NDetect[1, m]      <- res_m$NtrueDetect
-    NDetect[2, m]      <- res_m$NfalseDetect
-    contain <- contain + res_m$contain / Msim
-
-    if(SCoPEStype == "classical"){
-      I0 = model$mu(model$x) == C
-      I1 = model$mu(model$x) != C
-      #---------------------------------------------------------------------------
-      # Testing alternatives
-      pvals <- apply(Y, 1, function(v) t.test(x = v,
-                                              alternative = "two.sided",
-                                              conf.level = 1-alpha)$p.value)
-
-      # pvals_adjust = p.adjust(pvals, method = "sidak")
-      detect_hommel  = MPT_Detect(alpha, pvals, "hommel")
-      detect_sidak = FWE_control(alpha, pvals, "sidak")
-      detect_BH    = FDR_control(alpha, pvals, "BH")
-
-      NDetect_hommel[1, m]  <- sum(detect_hommel[I1])
-      NDetect_hommel[2, m]  <- sum(detect_hommel[I0])
-      NDetect_sidak[1, m] <- sum(detect_sidak[I1])
-      NDetect_sidak[2, m] <- sum(detect_sidak[I0])
-      NDetect_BH[1, m] <- sum(detect_BH[I1])
-      NDetect_BH[2, m] <- sum(detect_BH[I0])
-    }
-  }
-
-  if(SCoPEStype == "classical"){
-    return(list(coverage  = contain, Lcoverage = Lcontain,
-                Ucoverage = Ucontain, q = hatq, mu1C = hatmu1C,
-                detectL   = detectL, detectU = detectU,
-                NDetect        = NDetect,
-                NDetect_hommel = NDetect_hommel,
-                NDetect_sidak  = NDetect_sidak,
-                NDetect_BH     = NDetect_BH))
-  }else{
-    return(list(coverage  = contain, Lcoverage = Lcontain,
-                Ucoverage = Ucontain, q = hatq, mu1C = hatmu1C,
-                detectL   = detectL, detectU = detectU, NDetect = NDetect))
-  }
-}
-
-
-
 #' This functions simulates SCBs corresponding to an estimator and a set
 #' of functions given as a matrix with columns being the cut-off functions.
 #'
@@ -168,11 +24,19 @@ sim_SCBs <- function(Msim, Nvec = c(20, 50, 100, 200),
     local.cov    <- global.cov <- list()
     quantile.est <- tau.est    <- list()
     Timing       <- rep(NA, length(Nvec))
-    width.L1 <- width.L2 <- NULL
+    width.L1     <- width.L2   <- NULL
 
-    subI <- sub.intervals(x, q.method$knots,
-                          list(minus = rep(TRUE, length(x)),
-                               plus  = rep(TRUE, length(x))))$subI
+    if(!is.null(q.method$eval.knots)){
+      subI <- sub.intervals(x, q.method$eval.knots,
+                            list(minus = rep(TRUE, length(x)),
+                                 plus  = rep(TRUE, length(x))))$subI
+      NI = length(q.method$eval.knots)-1
+    }else{
+      subI <- sub.intervals(x, q.method$knots,
+                            list(minus = rep(TRUE, length(x)),
+                                 plus  = rep(TRUE, length(x))))$subI
+      NI = length(q.method$knots)-1
+    }
 
     # Initialize the q.method list for the data.
     q.method.Y <- q.method
@@ -227,6 +91,34 @@ sim_SCBs <- function(Msim, Nvec = c(20, 50, 100, 200),
                                x = x, q.method = q.method.Y, mu = mu.model(x)),
                  error = function(e){flag <<- F})
 
+        # Catch non-converged simulations for the minimization approach
+        if(!is.null(SCB$constraints_check)){
+          i = 1
+          while(i <= 3 && SCB$constraints_check[1] > 2e-4){
+            # Basis for expansion of the functions
+            q.method.Y$basis = create.bspline.basis(range(q.method$knots),
+                                                    nbasis = q.method$basis$nbasis-i)
+            tryCatch(SCB <- fairSCB(alpha, hatmu = mY, hatrho = sdY, tN = 1/sqrt(N),
+                                    x = x, q.method = q.method.Y, mu = mu.model(x)),
+                     error = function(e){flag <<- F})
+            i = i+1
+          }
+          i = 1
+          while(i <= 3 && SCB$constraints_check[1] > 2e-4){
+            # Basis for expansion of the functions
+            q.method.Y$basis = create.bspline.basis(range(q.method$knots),
+                                                    nbasis = q.method$basis$nbasis+i)
+            tryCatch(SCB <- fairSCB(alpha, hatmu = mY, hatrho = sdY, tN = 1/sqrt(N),
+                                    x = x, q.method = q.method.Y, mu = mu.model(x)),
+                     error = function(e){flag <<- F})
+            i = i+1
+          }
+
+          if(SCB$constraints_check[1]>5e-4){
+            flag <- F
+          }
+        }
+
         #-------------------------------------------------------------------------------
         # Get the coverage of the band
         if(flag){
@@ -252,7 +144,6 @@ sim_SCBs <- function(Msim, Nvec = c(20, 50, 100, 200),
 
     #---------------------------------------------------------------------------
     # Create a list with the results
-    NI = length(q.method$knots)-1
     na.sims <- vapply(1:length(local.cov), function(l)
                       sum(is.na(local.cov[[l]][1,])),
                       FUN.VALUE = 0.1)
