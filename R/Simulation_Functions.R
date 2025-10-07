@@ -78,11 +78,19 @@ sim_SCBs <- function(Msim, Nvec = c(20, 50, 100, 200),
 
         # Change the tau function to the estimate from the sample or keep the
         # truth
-        if(est_tau){
-          q.method.Y$tau = tau_est(R, x)
+        # 1) Choose the method for the quantile function estimation
+        if(!est_tau){
           tau = q.method.Y$tau
+        }else if(processname == "BiomechData"){
+          #  f = function(R, x){tau_est(R, x, df = NULL)}
+          q.method.Y$tau = tau_est_basis(R, x, Basis = Bio.Basis)
+          tau = q.method$tau
+        }else if(processname == "nonstat_matern"){
+          q.method.Y$tau = tau_est_basis(R, x, Basis = Matern.Basis)
+          tau = q.method$tau
         }else{
-          tau = q.method.Y$tau
+          q.method.Y$tau = tau_est(R, x, df = NULL)
+          tau = q.method$tau
         }
 
         # Get the confidence band
