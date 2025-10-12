@@ -641,3 +641,41 @@ ptw_linModel <- function(Y, X, sigma = NULL, W = NULL){
               sigma     = sigma,
               TestStat  = norm2_Xbeta))
 }
+
+#' This function generates a list with the required input for different
+#' methods to estimate the quantile function q of a SCoPE set.
+#'
+#' @param Y matrix N x M contains the data as columns
+#' @param X Design matrix of the linear model
+#' @param sigma vector of length M containing the standard deviation or its estimate
+#' @param W covariance matrix or estimated covariance matrix for generalized linear model
+#' @return Scale field
+#' @export
+bisect_from_negative <- function(f, interval, xtol = 1e-8, ftol = 1e-8, maxiter = 1000) {
+  a <- interval[1]; b <- interval[2]
+  fa <- f(a); fb <- f(b)
+  if(is.na(fa) || is.na(fb) || fa * fb > 0){
+    stop("Interval must bracket a root (opposite signs at endpoints).")
+  }
+
+  iter <- 0
+  repeat {
+    m  <- (a + b) / 2
+    fm <- f(m)
+
+    # Invariante: a ist die beste Stelle mit f(a) ≤ 0
+    if(sign(fm) == sign(fa)){
+        a  <- m
+        fa <- fm
+    }else{
+        b <- m
+        fb <- fm
+    }
+
+    # Abbruchkriterien
+    if( ((b - a) <= xtol || abs(fm) <= ftol || iter >= maxiter) && fm <= 0) break
+    iter <- iter + 1
+  }
+
+  list(root = m, f.root = fm, iter = iter, estim.prec = b - a)
+}

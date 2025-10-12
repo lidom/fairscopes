@@ -146,22 +146,29 @@ fairSCB <- function(alpha, hatmu, hatrho, tN,
       alpha = alpha / 2
     }
 
-    thresh = quantile_KRF(alpha,
-                     type      = q.method$type,
-                     tau       = q.method$tau,
-                     basis     = q.method$basis,
-                     loss_type = q.method$loss_type,
-                     knots     = q.method$knots,
-                     alpha_weights = q.method$alpha_weights,
-                     print = FALSE)
+    K = length(q.method$knots)-1
+    ww <- vapply(1:K,
+                      function(i)
+                        integrate_save(f = Vectorize(function(x) q.method$tau(x)),
+                                       xlims = q.method$knots[c(i, i+1)]),
+                      FUN.VALUE = pi)
+
+    I_weights = rep(1/K,K)
+
+    weights = exp(-300*ww^2/2)
+
+    thresh <- quantile_nico(alpha, knots = q.method$knots,
+                            tau = q.method$tau, df = q.method$df, type = "t",
+                            I_weights = I_weights,
+                            weights = weights / sum(weights))
 
     q <- thresh$u(x)
+    u <- thresh$u
 
-    width = thresh$WidthSCB
-    u     = thresh$u
+    width <- thresh$width
 
     out <- list()
-    out$constraints_check = thresh$constraints_check
+    # out$constraints_check = thresh$constraints_check
   }
 
   SCB = data.frame(

@@ -552,7 +552,7 @@ fair_quantile_KRF <- function(alpha, tau, x = seq(0, 1, length.out = 2), df = NU
   }
 
   return(list(u = ufcns$u, du = ufcns$du, alpha_loc = alpha_k*I_weights,
-              alpha_global = diff+alpha, niter = niter))
+              alpha_global = diff+alpha, niter = niter, width = ufcns$width ))
 }
 
 
@@ -680,8 +680,128 @@ alg1_KRF <- function(alpha, knots, tau, df = NULL, type = "t",
   dufun       <- function(t, c_v, knots){}
   body(dufun) <- parse(text = fct_body_du)
 
-  return(list(u = function(t){ ufun(t, c_v = coeffs, knots = knots) },
-              du = function(t){ dufun(t, c_v = u_fun[2,], knots = knots) }, c_v =coeffs))
+  u = function(t){ ufun(t, c_v = coeffs, knots = knots) }
+
+  width <- c(sqrt(integrate_save(f = Vectorize(function(x) abs(u(x)) ), c(0, 1) )),
+             sqrt(integrate_save(f = Vectorize(function(x) u(x)^2 ), c(0, 1))))
+  names(width) <- c("L1", "L2")
+
+  return(list(u = u, du = function(t){ dufun(t, c_v = u_fun[2,], knots = knots) },
+              c_v = coeffs, width = width))
+}
+
+#' Find an optimal piecewise linear quantile function q to remove
+#' conservativeness of standard Kac Rice formula approach for fair
+#' thresholds.
+#'
+#' @param sample add
+#' @return list with elements
+#'  \itemize{
+#'   \item q Vector containing the fair piecewise linear thresholding function at each x
+#'   \item qm Vector containing the offset and the slopes of the fair thresholding function
+#'   \item EmpRejections Numeric giving the empirical rejection rate of the fair
+#'   thresholding function with respect to the sample.
+#' }
+#' @export
+quantile_nico <- function(alpha, knots, tau, df = NULL, type = "t",
+                     I_weights = rep(1/(length(knots) - 1), length(knots) - 1),
+                     weights = rep(1/(length(knots) - 1), length(knots) - 1),
+                     sigma = 1){
+
+
+  # Get the correct KRF formula
+  if(type == "t"){
+    KRF <- function(u, du, x, crossings, t0, EC){
+      KacRice_t( df  = df,
+                 tau = tau,
+                 u   = u,
+                 du  = du,
+                 x   = x,
+                 crossings = crossings, t0 = t0, sigma = 1,
+                 lower.tail = FALSE, EC = EC)
+    }
+
+    Phi <- function(t){
+                stats::pt(q = t, df = df, lower.tail = FALSE)
+            }
+  }
+  # Get the amount of Intervals
+  K <- length(I_weights)
+
+  # Initialize the parameters for the piecewise linear function on each Interval
+  u_fun <- matrix(NA, 2, K)
+
+  ##############################################################################
+  # Find constant for first interval
+  find_u0 <- function(u0){
+    KRF(u  = function(y){rep(u0, length(y))},
+        du = function(y){rep(0, length(y))},
+        x  = c(knots[1],  knots[2]),
+        crossings = "up", t0 = 1, EC = F) + Phi(u0) * weights[1] - alpha * I_weights[1]
+  }
+  # slope =0 on the first interval
+  u_fun[2, 1] <- 0
+  # get the constant on the first interval
+  u_fun[1, 1] <- uniroot(f = find_u0, interval = c(0, 50), extendInt = "downX")$root
+#  u_fun[1, 1] <- bisect_from_negative(f = find_u0, interval = c(0, 50))$root
+
+  # Initialize string for piecewise linear function
+  fct_body_u  <- paste0("c_v[1]")
+  fct_body_du <- paste0("c_v[1]")
+
+  ##############################################################################
+  # Find constant for first interval
+  if(K == 1){
+    width <- c(u_fun[1, 1], u_fun[1, 1])
+    names(width) <- c("L1", "L2")
+
+    return(list( u = Vectorize(function(t){u_fun[1, 1]}),
+                du = Vectorize(function(t){0}), width = width))
+  }else if(K != 1){
+    for(k in 2:K){
+      #---- even intervals
+      # Initialize start value on the interal
+      u_fun[1, k] <- u_fun[1, k-1] + u_fun[2, k-1] * (knots[k] - knots[k-1])
+
+      # Function to minimize to get slope
+      find_mk <- Vectorize(function(mk){
+        KRF(u = function(y){u_fun[1, k] + mk*(y - knots[k])},
+            du = function(y){rep(mk, length(y))},
+            x = c(knots[k], knots[k+1]),
+            crossings = "up",
+            t0 = NULL, EC = FALSE)  + Phi(u_fun[1, 1])*weights[k] -
+                alpha * I_weights[k]
+      })
+      # Find the two options for the minimum
+      u_fun[2, k] = uniroot(f = find_mk, interval = c(-100, 100), extendInt = "downX", tol = 1e-4)$root
+ #     u_fun[2, k] = bisect_from_negative(f = find_mk,
+#                                         interval = c(-20, 20))$root
+
+      # String for p.linear function
+      fct_body_u <- paste0(fct_body_u,
+                           "+ c_v[",k,"]*pmin(pmax(t - knots[",k,"],0),  knots[",k+1,"] - knots[",k,"])")
+      fct_body_du <- paste0(fct_body_du,
+                            "+ c_v[",k,"]*pmax(sign(t - knots[",k,"]),0)*pmax(-sign(t - knots[",k+1,"]),0)")
+    }
+
+
+  coeffs = c(u_fun[1,1], u_fun[2,-1])
+
+  ufun       <- function(t, c_v, knots){}
+  body(ufun) <- parse(text = fct_body_u)
+  dufun       <- function(t, c_v, knots){}
+  body(dufun) <- parse(text = fct_body_du)
+
+  u = function(t){ ufun(t, c_v = coeffs, knots = knots) }
+
+  width <- c(sqrt(integrate_save(f = Vectorize(function(x) abs(u(x)) ), c(0, 1) )),
+             sqrt(integrate_save(f = Vectorize(function(x) u(x)^2 ), c(0, 1))))
+  names(width) <- c("L1", "L2")
+  return(list(u = u,
+              du = function(t){
+              dufun(t, c_v = u_fun[2,], knots = knots) },
+              c_v = coeffs, width = width))
+  }
 }
 
 

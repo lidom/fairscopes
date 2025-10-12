@@ -24,7 +24,7 @@ sim_SCBs <- function(Msim, Nvec = c(20, 50, 100, 200),
     local.cov    <- global.cov <- list()
     quantile.est <- tau.est    <- list()
     Timing       <- rep(NA, length(Nvec))
-    width.L1     <- width.L2   <- NULL
+    width.L1     <- width.L2   <- matrix(NA, Msim, length(Nvec))
 
     if(!is.null(q.method$eval.knots)){
       subI <- sub.intervals(x, q.method$eval.knots,
@@ -142,8 +142,8 @@ sim_SCBs <- function(Msim, Nvec = c(20, 50, 100, 200),
           quantile.est[[n]][,m] <- SCB$SCB$q
           tau.est[[n]][,m]      <- tau(x)
 
-          width.L1 <- rbind(width.L1, SCB$width[, 1])
-          width.L2 <- rbind(width.L2, SCB$width[, 2])
+          width.L1[m,n] <- SCB$width[1]
+          width.L2[m,n] <- SCB$width[2]
         }
       }
       Ie <- Sys.time()
