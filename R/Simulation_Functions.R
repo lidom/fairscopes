@@ -99,33 +99,33 @@ sim_SCBs <- function(Msim, Nvec = c(20, 50, 100, 200),
                                x = x, q.method = q.method.Y, mu = mu.model(x)),
                  error = function(e){flag <<- F})
 
-        # Catch non-converged simulations for the minimization approach
-        if(!is.null(SCB$constraints_check)){
-          i = 1
-          while(i <= 3 && SCB$constraints_check[1] > 2e-4){
-            # Basis for expansion of the functions
-            q.method.Y$basis = create.bspline.basis(range(q.method$knots),
-                                                    nbasis = q.method$basis$nbasis-i)
-            tryCatch(SCB <- fairSCB(alpha, hatmu = mY, hatrho = sdY, tN = 1/sqrt(N),
-                                    x = x, q.method = q.method.Y, mu = mu.model(x)),
-                     error = function(e){flag <<- F})
-            i = i+1
-          }
-          i = 1
-          while(i <= 3 && SCB$constraints_check[1] > 2e-4){
-            # Basis for expansion of the functions
-            q.method.Y$basis = create.bspline.basis(range(q.method$knots),
-                                                    nbasis = q.method$basis$nbasis+i)
-            tryCatch(SCB <- fairSCB(alpha, hatmu = mY, hatrho = sdY, tN = 1/sqrt(N),
-                                    x = x, q.method = q.method.Y, mu = mu.model(x)),
-                     error = function(e){flag <<- F})
-            i = i+1
-          }
-
-          if(SCB$constraints_check[1]>5e-4){
-            flag <- F
-          }
-        }
+        # # Catch non-converged simulations for the minimization approach
+        # if(!is.null(SCB$constraints_check)){
+        #   i = 1
+        #   while(i <= 3 && SCB$constraints_check[1] > 2e-4){
+        #     # Basis for expansion of the functions
+        #     q.method.Y$basis = create.bspline.basis(range(q.method$knots),
+        #                                             nbasis = q.method$basis$nbasis-i)
+        #     tryCatch(SCB <- fairSCB(alpha, hatmu = mY, hatrho = sdY, tN = 1/sqrt(N),
+        #                             x = x, q.method = q.method.Y, mu = mu.model(x)),
+        #              error = function(e){flag <<- F})
+        #     i = i+1
+        #   }
+        #   i = 1
+        #   while(i <= 3 && SCB$constraints_check[1] > 2e-4){
+        #     # Basis for expansion of the functions
+        #     q.method.Y$basis = create.bspline.basis(range(q.method$knots),
+        #                                             nbasis = q.method$basis$nbasis+i)
+        #     tryCatch(SCB <- fairSCB(alpha, hatmu = mY, hatrho = sdY, tN = 1/sqrt(N),
+        #                             x = x, q.method = q.method.Y, mu = mu.model(x)),
+        #              error = function(e){flag <<- F})
+        #     i = i+1
+        #   }
+        #
+        #   if(SCB$constraints_check[1]>5e-4){
+        #     flag <- F
+        #   }
+        # }
 
         #-------------------------------------------------------------------------------
         # Get the coverage of the band
