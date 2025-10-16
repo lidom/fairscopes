@@ -147,27 +147,29 @@ fairSCB <- function(alpha, hatmu, hatrho, tN,
     }
 
     K = length(q.method$knots)-1
-    ww <- vapply(1:K,
-                      function(i)
-                        integrate_save(f = Vectorize(function(x) q.method$tau(x)),
-                                       xlims = q.method$knots[c(i, i+1)]),
-                      FUN.VALUE = pi)
+    # Get the starting value
+    u0 = RFT::GKFthreshold( alpha = alpha,
+                           LKC = c(1, integrate_save(q.method$tau,
+                                                     xlims = c(x[1], x[length(x)]))),
+                           type = q.method$type,
+                           df   = q.method$df,
+                           interval = c(0, 100) )$threshold
 
-    I_weights = rep(1/K,K)
-
-    weights = exp(-300*ww^2/2)
-
-    thresh <- quantile_nico(alpha, knots = q.method$knots,
-                            tau = q.method$tau, df = q.method$df, type = "t",
-                            I_weights = I_weights,
-                            weights = weights / sum(weights))
+    # Find the
+    thresh <- quantile_KRF(x0 = c(u0, rep(0,K)),
+                           alpha,
+                           tau   = q.method$tau,
+                           type  = q.method$type,
+                           df    = q.method$df,
+                           knots = q.method$knots,
+                           alpha_weights = q.method$I_weights)
 
     q <- thresh$u(x)
     u <- thresh$u
 
     width <- thresh$width
 
-    out <- list()
+    out <- list(optim = thresh$res)
     # out$constraints_check = thresh$constraints_check
   }
 

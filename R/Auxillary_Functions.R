@@ -679,3 +679,170 @@ bisect_from_negative <- function(f, interval, xtol = 1e-8, ftol = 1e-8, maxiter 
 
   list(root = m, f.root = fm, iter = iter, estim.prec = b - a)
 }
+
+
+
+#' This function generates a list with the required input for different
+#' methods to estimate the quantile function q of a SCoPE set.
+#'
+#' @param Y matrix N x M contains the data as columns
+#' @param X Design matrix of the linear model
+#' @param sigma vector of length M containing the standard deviation or its estimate
+#' @param W covariance matrix or estimated covariance matrix for generalized linear model
+#' @return Scale field
+#' @export
+eval_piecewise_u <- function(u0, m, tt, x) {
+  uks <- compute_u_prefix(u0, m, tt)
+  # For each x, find its interval index k with t_{k-1} <= x < t_k
+  # use findInterval for vectorized performance
+  idx <- findInterval(x, tt, rightmost.closed = TRUE)
+  idx[idx < 1]  <- 1
+  idx[idx > K]  <- K
+
+  # Compute u(x) = u_{k-1} + m_k * (x - t_{k-1})
+  u_vals <- uks[idx] + m[idx] * (x - tt[idx])
+  return(u_vals)
+}
+
+#' This function generates a list with the required input for different
+#' methods to estimate the quantile function q of a SCoPE set.
+#'
+#' @param Y matrix N x M contains the data as columns
+#' @param X Design matrix of the linear model
+#' @param sigma vector of length M containing the standard deviation or its estimate
+#' @param W covariance matrix or estimated covariance matrix for generalized linear model
+#' @return Scale field
+#' @export
+eval_piecewise_du <- function(u0, m, tt, x) {
+    K <- length(tt) - 1
+    stopifnot(length(m) == K)
+
+    # Clip x to domain [t0, tK]
+    x <- pmin(pmax(x, tt[1]), tt[K+1])
+
+    # Find interval indices for each x
+    idx <- findInterval(x, tt, rightmost.closed = TRUE)
+    idx[idx < 1] <- 1
+    idx[idx > K] <- K
+
+    # Derivative is just the slope m_k on that interval
+    du_vals <- m[idx]
+    return(du_vals)
+  }
+
+#' This function generates a list with the required input for different
+#' methods to estimate the quantile function q of a SCoPE set.
+#'
+#' @param Y matrix N x M contains the data as columns
+#' @param X Design matrix of the linear model
+#' @param sigma vector of length M containing the standard deviation or its estimate
+#' @param W covariance matrix or estimated covariance matrix for generalized linear model
+#' @return Scale field
+#' @export
+compute_u_prefix <- function(u0, m, tt) {
+  K <- length(tt) - 1
+  stopifnot(length(m) == K)
+
+  delta <- diff(tt)
+
+  u_vals <- c(u0, u0 + cumsum(m*delta))
+
+  return(u_vals[-(K+1)])
+}
+
+#' This function generates a list with the required input for different
+#' methods to estimate the quantile function q of a SCoPE set.
+#'
+#' @param Y matrix N x M contains the data as columns
+#' @param X Design matrix of the linear model
+#' @param sigma vector of length M containing the standard deviation or its estimate
+#' @param W covariance matrix or estimated covariance matrix for generalized linear model
+#' @return Scale field
+#' @export
+L2_cost <- function(x, tt) {
+  u0 <- x[1]
+  m  <- x[-1]
+
+  K <- length(tt) - 1
+  u_prev <- compute_u_prefix(u0, m, tt)
+  delta  <- diff(tt)
+
+  sum(m^2 * delta^3/3 + m*u_prev*delta^2 + u_prev^2*delta)
+}
+
+
+#' This function generates a list with the required input for different
+#' methods to estimate the quantile function q of a SCoPE set.
+#'
+#' @param Y matrix N x M contains the data as columns
+#' @param X Design matrix of the linear model
+#' @param sigma vector of length M containing the standard deviation or its estimate
+#' @param W covariance matrix or estimated covariance matrix for generalized linear model
+#' @return Scale field
+#' @export
+# ∇J(x)  (korrekt & O(K))
+gr_L2_cost <- function(x, tt) {
+  u0 <- x[1]
+  m  <- x[-1]
+  delta <- diff(tt)
+
+  K  <- length(delta)
+
+  u_prev <- compute_u_prefix(u0, m, tt)
+
+  # S_k = 2*dt_k*u_{k-1} + dt_k^2*m_k
+  L_u0 <- sum((2 * delta * u_prev + delta^2 * m))
+
+  S  <- 2*delta*u_prev + delta^2*m                # Länge K
+  CS <- sum(S) - cumsum(S)                        # CS[j] = sum_{k=j+1..K} S_k
+
+  L_m = 2/3* m*delta^3 +  delta^2 * u_prev + CS*delta
+
+  c(L_u0, L_m)
+}
+#' This function generates a list with the required input for different
+#' methods to estimate the quantile function q of a SCoPE set.
+#'
+#' @param Y matrix N x M contains the data as columns
+#' @param X Design matrix of the linear model
+#' @param sigma vector of length M containing the standard deviation or its estimate
+#' @param W covariance matrix or estimated covariance matrix for generalized linear model
+#' @return Scale field
+#' @export
+make_piecewise_u <- function(u0, m, t) {
+  # precompute for speed & determinism
+  K <- length(t) - 1
+  stopifnot(length(m) == K)
+  u_left <- compute_u_prefix(u0, m, t)
+  force(u_left); force(m); force(t)
+  function(x) {
+    xx <- pmin(pmax(x, t[1]), t[K+1])
+    idx <- findInterval(xx, t, rightmost.closed = TRUE)
+    idx[idx < 1] <- 1; idx[idx > K] <- K
+    u_left[idx] + m[idx] * (xx - t[idx])
+  }
+}
+
+#' This function generates a list with the required input for different
+#' methods to estimate the quantile function q of a SCoPE set.
+#'
+#' @param Y matrix N x M contains the data as columns
+#' @param X Design matrix of the linear model
+#' @param sigma vector of length M containing the standard deviation or its estimate
+#' @param W covariance matrix or estimated covariance matrix for generalized linear model
+#' @return Scale field
+#' @export
+make_piecewise_du <- function(u0, m, t) {
+  # precompute for speed & determinism
+  K <- length(t) - 1
+  stopifnot(length(m) == K)
+  u_left <- compute_u_prefix(u0, m, t)
+  force(u_left); force(m); force(t)
+  function(x) {
+    xx <- pmin(pmax(x, t[1]), t[K+1])
+    idx <- findInterval(xx, t, rightmost.closed = TRUE)
+    idx[idx < 1] <- 1; idx[idx > K] <- K
+
+    m[idx]
+  }
+}
