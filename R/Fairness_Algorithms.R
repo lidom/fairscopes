@@ -363,7 +363,7 @@ quantile_KRF <- function(x0, alpha, tau, type = "t", df = NULL,
     lb = lb, ub = ub,
     opts = list(
       algorithm = "NLOPT_LD_SLSQP",
-      maxeval   = 50,
+      maxeval   = 500,
       xtol_rel  = 1e-4,
       ftol_rel  = 1e-4,
       tol_constraints_eq = 1e-3,

@@ -693,6 +693,7 @@ bisect_from_negative <- function(f, interval, xtol = 1e-8, ftol = 1e-8, maxiter 
 #' @export
 eval_piecewise_u <- function(u0, m, tt, x) {
   uks <- compute_u_prefix(u0, m, tt)
+  K   <- length(tt) - 1
   # For each x, find its interval index k with t_{k-1} <= x < t_k
   # use findInterval for vectorized performance
   idx <- findInterval(x, tt, rightmost.closed = TRUE)
