@@ -29,7 +29,7 @@
 #'   thresholding function with respect to the sample.
 #' }
 #' @export
-alg1_KR_chisq_backup <- function(alpha, knots, tau, df,
+alg1_KR_chisq <- function(alpha, knots, tau, df,
                           cross.start = "up",
                           I_weights = rep(1/(length(knots) - 1), length(knots) - 1)){
   # Define the even crossing direction

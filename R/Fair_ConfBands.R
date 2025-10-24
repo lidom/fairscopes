@@ -210,11 +210,12 @@ fairSCB <- function(alpha, hatmu, hatrho, tN,
 #' @export
 fairSCB_var <- function(alpha, hatvar,
                         x = seq(0, 1, length.out = length(hatvar)),
-                        q.method, type = "two-sided", true_var = NULL, subI = NULL){
+                        q.method, type = "two-sided", true_var = NULL,
+                        subI = NULL){
   #---------------------------------------------------------------------------
   # Estimate the quantile funcion q.
   fair.q = NULL
-  if(q.method$name == "KR_chi2"){
+  if(q.method$name == "KRF_fair"){
     if(type == "two-sided"){
       lb = fair_quantile_KRF(alpha = alpha/2,
                              type  = "chi2",
@@ -223,22 +224,31 @@ fairSCB_var <- function(alpha, hatvar,
                              knots     = q.method$knots,
                              I_weights = q.method$I_weights,
                              u.type      = "linear",
-                             EC.levelset = ">",
+                             crossings = "up",
+                             lower.tail = FALSE,
                              alpha_up  = q.method$alpha/2,
                              maxIter   = q.method$maxIter,
-                             tol = alpha/2 / 100)$u
+                             tol = alpha/2 / 100)
       ub = fair_quantile_KRF(alpha = alpha/2,
                              type  = "chi2",
                              tau   = q.method$tau,
-                             df        = q.method$df,
-                             knots     = q.method$knots,
-                             I_weights = q.method$I_weights,
-                             u.type      = "linear",
-                             EC.levelset = "<",
-                             alpha_up  = q.method$alpha/2,
-                             maxIter   = q.method$maxIter,
-                             tol = alpha/2 / 100)$u
-      SCB = cbind(q.method$df*hatvar/lb(x), q.method$df*hatvar/ub(x))
+                             df         = q.method$df,
+                             knots      = q.method$knots,
+                             I_weights  = q.method$I_weights,
+                             u.type     = "linear",
+                             crossings  = "down",
+                             lower.tail = TRUE,
+                             alpha_up   = q.method$alpha/2,
+                             maxIter    = q.method$maxIter,
+                             tol = alpha/2 / 100)
+
+      width           <- matrix(0, nrow = 1, ncol = 2)
+      colnames(width) <- c("L1", "L2")
+      rownames(width) <- c("u")
+
+      width[1,] <- c(integrate(function(t) abs(1/ub$u(t) - 1/lb$u(t)),   lower = 0, upper = 1)$value,
+                     sqrt(integrate(function(t) abs(1/ub$u(t) - 1/lb$u(t))^2, lower = 0, upper = 1)$value))
+
     }else if(type == "low"){
       lb = fair_quantile_KRF(alpha = alpha,
                              type  = "chi2",
@@ -247,44 +257,172 @@ fairSCB_var <- function(alpha, hatvar,
                              knots     = q.method$knots,
                              I_weights = q.method$I_weights,
                              u.type      = "linear",
-                             EC.levelset = ">",
+                             crossings   = "up",
+                             lower.tail  = FALSE,
                              alpha_up  = q.method$alpha,
                              maxIter   = q.method$maxIter,
-                             tol = alpha / 100)$u
-      ub <- Vectorize(function(t){Inf})
+                             tol = alpha / 100)
+      ub <- list()
+      ub$ub <- Vectorize(function(t){Inf})
 
-      SCB = cbind(q.method$df*hatvar/lb(x), rep(Inf, length(x)))
+      SCB   = cbind(q.method$df*hatvar/lb$u(x), rep(Inf, length(x)))
+      width = NULL
     }else if(type == "up"){
       ub = fair_quantile_KRF(alpha = alpha,
                              type  = "chi2",
                              tau   = q.method$tau,
-                             df        = q.method$df,
-                             knots     = q.method$knots,
-                             I_weights = q.method$I_weights,
-                             u.type      = "linear",
-                             EC.levelset = "<",
-                             alpha_up  = q.method$alpha,
-                             maxIter   = q.method$maxIter,
-                             tol = alpha / 100)$u
-      lb <- Vectorize(function(t){0})
+                             df         = q.method$df,
+                             knots      = q.method$knots,
+                             I_weights  = q.method$I_weights,
+                             u.type     = "linear",
+                             crossings  = "low",
+                             lower.tail = TRUE,
+                             alpha_up   = q.method$alpha,
+                             maxIter    = q.method$maxIter,
+                             tol = alpha / 100)
 
-      SCB = cbind(rep(0, length(x)), q.method$df*hatvar/ub(x))
+      lb <- list()
+      lb$lb <- Vectorize(function(t){0})
+
+      width = NULL
+    }
+    out <- list()
+  }else if(q.method$name == "KRF_nonfair"){
+    if(type == "two-sided"){
+      alpha = alpha / 2
+
+      ub =  fair_quantile_KRF(alpha = alpha,
+                               type  = "chi2",
+                               tau   = q.method$tau,
+                               df         = q.method$df,
+                               knots      = range(x),
+                               I_weights  = 1,
+                               u.type     = "linear",
+                               crossings  = "low",
+                               lower.tail = TRUE,
+                               alpha_up   = q.method$alpha,
+                               maxIter    = 0,
+                               tol = alpha / 100)
+
+      lb = fair_quantile_KRF(alpha = alpha,
+                              type  = "chi2",
+                              tau   = q.method$tau,
+                              df         = q.method$df,
+                              knots      = range(x),
+                              I_weights  = 1,
+                              u.type     = "linear",
+                              crossings  = "up",
+                              lower.tail = FALSE,
+                              alpha_up   = q.method$alpha,
+                              maxIter    = 0,
+                              tol = alpha / 100)
+
+      width           <- matrix(0, nrow = 1, ncol = 2)
+      colnames(width) <- c("L1", "L2")
+      rownames(width) <- c("u")
+      width[1,]       <- c(1/ub$u(0)-1/lb$u(0),1/ub$u(0)-1/lb$u(0)) * diff(range(x))
+    }
+    # Preapare the output function
+    out <- list()
+
+  }else if(q.method$name == "KRF_min"){
+    if(type == "two-sided"){
+      alpha = alpha / 2
     }
 
-    rownames(SCB) <- x
-    colnames(SCB) <- c("low", "up")
+    K = length(q.method$knots)-1
+
+    # Get the starting value
+    ub0 =  fair_quantile_KRF(alpha = alpha,
+                            type  = "chi2",
+                            tau   = q.method$tau,
+                            df         = q.method$df,
+                            knots      = range(x),
+                            I_weights  = 1,
+                            u.type     = "linear",
+                            crossings  = "low",
+                            lower.tail = TRUE,
+                            alpha_up   = q.method$alpha,
+                            maxIter    = 0,
+                            tol = alpha / 100)
+
+    lb0 = fair_quantile_KRF(alpha = alpha,
+                           type  = "chi2",
+                           tau   = q.method$tau,
+                           df         = q.method$df,
+                           knots      = range(x),
+                           I_weights  = 1,
+                           u.type     = "linear",
+                           crossings  = "up",
+                           lower.tail = FALSE,
+                           alpha_up   = q.method$alpha,
+                           maxIter    = 0,
+                           tol = alpha / 100)
+
+    # Find the
+    thresh_ub <- quantile_KRF(x0 = c(ub0$u(0), rep(0,K)),
+                           alpha = alpha,
+                           tau   = q.method$tau,
+                           type  = q.method$type,
+                           df    = q.method$df,
+                           knots = q.method$knots,
+                           alpha_weights = q.method$I_weights,
+                           crossings  = "down",
+                           lower.tail = TRUE,
+                           MAX = TRUE)
+    thresh_lb <- quantile_KRF(x0 = c(lb0$u(0), rep(0,K)),
+                              alpha,
+                              tau   = q.method$tau,
+                              type  = q.method$type,
+                              df    = q.method$df,
+                              knots = q.method$knots,
+                              alpha_weights = q.method$I_weights,
+                              crossings  = "up",
+                              lower.tail = FALSE,
+                              MAX = FALSE)
+
+    width           <- matrix(0, nrow = 1, ncol = 2)
+    colnames(width) <- c("L1", "L2")
+    rownames(width) <- c("u")
+
+    ub <- thresh_ub
+    lb <- thresh_lb
+
+    width[1,] <- c(integrate(function(t) abs(1/ub$u(t) - 1/lb$u(t)),   lower = 0, upper = 1)$value,
+                   sqrt(integrate(function(t) abs(1/ub$u(t) - 1/lb$u(t))^2, lower = 0, upper = 1)$value))
+
+    out <- list(optim = list(lb = thresh_lb$res, ub = thresh_ub$res))
+    # out$constraints_check = thresh$constraints_check
+  }
+
+  SCB = data.frame(
+    "x"   = x,
+    "low" = q.method$df * hatvar / lb$u(x),
+    "est" =  hatvar,
+    "up"  = q.method$df * hatvar / ub$u(x),
+    "qlow" = lb$u(x),
+    "qup"  = ub$u(x)
+  )
+
+  if(type == "low"){
+    SCB = SCB[-4]
+  }else if(type == "up"){
+    SCB = SCB[, -2]
   }
 
   # Output
   if(is.null(true_var)){
-    return(list(SCB = SCB, lb = lb, ub = ub))
+      return(c(out,
+             list(SCB = SCB, width = width, ub = ub, lb = lb)))
   }else{
-    loc.cov = (SCB[, "low"] <= true_var) & (true_var <= SCB[, "up"])
+      loc.cov = (SCB[, "low"] <= true_var) & (true_var <= SCB[, "up"])
 
-    # Note that the coverage only works for two-sided!
-    return(list(SCB = SCB, lb = lb, ub = ub,
-                loc.cov  = loc.cov,
-                glob.cov = all(loc.cov)))
+      SCB$var  = true_var
+      # Note that the coverage only works for two-sided!
+      return(c(out,
+               list(SCB = SCB, width = width, ub = ub, lb = lb,
+                    loc.cov  = loc.cov,
+                    glob.cov = all(loc.cov))))
   }
 }
 

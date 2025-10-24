@@ -264,9 +264,10 @@ fair_quantile_boot <- function(alpha, x, samples,
 #' @return vector of length 2 containing the L1 norm and square of the L2 norm
 #' of the function defined by coef and basis
 #' @export
-quantile_KRF <- function(x0, alpha, tau, type = "t", df = NULL,
-                         knots         = c(0, 1),
-                         alpha_weights = rep(1 / (length(knots) - 1), length(knots) - 1)){
+quantile_KRF <- function(x0, alpha, tau, type = "t", df = NULL, knots = c(0, 1),
+                         alpha_weights = rep(1 / (length(knots) - 1), length(knots) - 1),
+                         crossings = "up", lower.tail = FALSE, MAX = FALSE
+                         ){
   # Initialize output
   summary <- list()
 
@@ -285,6 +286,16 @@ quantile_KRF <- function(x0, alpha, tau, type = "t", df = NULL,
                  crossings = "up", t0 = 1, sigma = 1,
                  lower.tail = FALSE, EC = TRUE)
     }
+  }else if(type == "chi2"){
+    KRF <- function(u, du, x){
+      KacRice_chi2( df  = df,
+                    tau = tau,
+                    u   = u,
+                    du  = du,
+                    x   = x,
+                    crossings = crossings, sigma = 1,
+                    lower.tail = lower.tail, EC = TRUE)
+    }
   }
 
   # Define the inital KRF constraint
@@ -298,13 +309,13 @@ quantile_KRF <- function(x0, alpha, tau, type = "t", df = NULL,
         x  = c(knots[1], knots[NI+1])) - alpha
   }
 
-
+  ccc = ifelse(MAX, -1, 1) # change sign of target if max is needed
 
   # ----- Ziel + Gradient -----
   eval_f <- function(x) {
     list(
-      objective = L2_cost(x, knots),           # deine J-Funktion (Skalar)
-      gradient  = gr_L2_cost(x, knots)         # dein ∇J (oder numDeriv::grad(...))
+      objective = ccc*L2_cost(x, knots),           # deine J-Funktion (Skalar)
+      gradient  = ccc*gr_L2_cost(x, knots)         # dein ∇J (oder numDeriv::grad(...))
     )
   }
 
@@ -335,41 +346,85 @@ quantile_KRF <- function(x0, alpha, tau, type = "t", df = NULL,
     list(constraints = g, jacobian = matrix(gg, nrow = 1))
   }
 
+  # ----- Inequality constraint g(x)=0 + numerischer Gradient -----
+  eval_g_ineq <- function(x) {
+    eps = 0.5
+    u0 <- x[1]
+    m  <- x[-1]                     # Länge K
+    dx <- diff(knots)               # Länge K
+
+    # Werte von u an allen Knoten (K+1 Werte)
+    u_at_knots <- c(u0, u0 + cumsum(m * dx))
+
+    # g(x) <= 0 erzwingt u_at_knots >= eps
+    g <- eps - u_at_knots
+
+    # (A) Analytische Jacobimatrix (schnell & exakt):
+    K <- length(dx)
+    J <- matrix(0, nrow = K + 1, ncol = K + 1)  # (K+1 constraints) x (1+K Variablen)
+    J[, 1] <- -1                                # d/du0 von (eps - u) = -1
+    for (j in 1:K) {
+      # m_j wirkt ab Knoten j+1 aufwärts mit Faktor -dx[j]
+      J[(j + 1):(K + 1), j + 1] <- -dx[j]
+    }
+
+    list(constraints = g, jacobian = J)
+  }
+
   # (optional) sinnvolle Box-Bounds zur Stabilisierung/Beschleunigung:
   K  <- length(knots) - 1
 
   lb <- x0[-1]
-  lb[lb<0] <- 1.3 * lb[lb<0]
-  lb[lb>0] <- 0.7 * lb[lb>0]
+  lb[lb<0]  <- 1.3 * lb[lb<0]
+  lb[lb>0]  <- 0.7 * lb[lb>0]
   lb[lb==0] <- 1.3 * mean(lb[lb<0])
 
   ub <- x0[-1]
-  ub[ub<0] <- 0.7 * ub[ub<0]
-  ub[ub>0] <- 1.3 * ub[ub>0]
-  ub[ub==0] <- 1.3 *mean(ub[ub>0])
+  ub[ub<0]  <- 0.7 * ub[ub<0]
+  ub[ub>0]  <- 1.3 * ub[ub>0]
+  ub[ub==0] <- 1.3 * mean(ub[ub>0])
 
   lb = c(x0[1]*0.8, lb)
   ub = c(x0[1]*1.2, ub)
 
   if(all(diff(x0[-1])==0)){
     lb = c(x0[1]*0.8, -5/diff(knots))
-    ub = c(x0[1]*1.2, 5/diff(knots))
+    ub = c(x0[1]*1.2,  5/diff(knots))
   }
 
-  res <- nloptr(
-    x0 = x0,
-    eval_f   = eval_f,
-    eval_g_eq = eval_g_eq,
-    lb = lb, ub = ub,
-    opts = list(
-      algorithm = "NLOPT_LD_SLSQP",
-      maxeval   = 500,
-      xtol_rel  = 1e-4,
-      ftol_rel  = 1e-4,
-      tol_constraints_eq = 1e-3,
-      print_level = 0
+  if(type == "t"){
+    res <- suppressWarnings(nloptr(
+      x0 = x0,
+      eval_f   = eval_f,
+      eval_g_eq = eval_g_eq,
+      lb = lb, ub = ub,
+      opts = list(
+        algorithm = "NLOPT_LD_SLSQP",
+        maxeval   = 100,
+        xtol_rel  = 1e-4,
+        ftol_rel  = 1e-4,
+        tol_constraints_eq = 1e-3,
+        print_level = 0
+      ))
     )
-  )
+  }else{
+    res <- suppressWarnings(nloptr(
+      x0        = x0,
+      eval_f    = eval_f,
+      eval_g_eq = eval_g_eq,            # KRF-Gleichung
+      eval_g_ineq = eval_g_ineq,        # Positivität an Knoten
+      lb = lb, ub = ub,
+      opts = list(
+        algorithm = "NLOPT_LD_SLSQP",
+        maxeval   = 100,               # ggf. etwas höher, da mehr Nebenbedingungen
+        xtol_rel  = 1e-4,
+        ftol_rel  = 1e-4,
+        tol_constraints_eq   = 1e-3,
+        tol_constraints_ineq = rep(1e-6, length(knots)),
+        print_level = 0
+      ))
+    )
+  }
 
   sqrt(L2_cost(res$solution, knots))
   KRF_constraint(res$solution)
@@ -385,7 +440,7 @@ quantile_KRF <- function(x0, alpha, tau, type = "t", df = NULL,
   u  = make_piecewise_u(u0, m, knots)
   du = make_piecewise_du(u0, m, knots)
 
-  L2 <- sqrt(res$objective)
+  L2 <- suppressWarnings(sqrt(res$objective))
   L1 <- integrate_save(f1 = u, xlims = range(knots))
   width = c(L1, L2)
   names(width) <- c("L1", "L2")
@@ -408,6 +463,8 @@ fair_quantile_KRF <- function(alpha, tau, x = seq(0, 1, length.out = 2), df = NU
                               sigma     = 1,
                               alpha_up  = alpha*(length(knots)-1),
                               maxIter   = 20,
+                              crossings = "up",
+                              lower.tail = FALSE,
                               tol       = alpha / 10){
   # Get the correct KRF formula
   if(type == "t"){
@@ -421,15 +478,29 @@ fair_quantile_KRF <- function(alpha, tau, x = seq(0, 1, length.out = 2), df = NU
                  lower.tail = FALSE, EC = TRUE
       )
     }
+  }else if(type == "chi2"){
+    KRF <- function(u, du, x){
+      KacRice_chi2( df  = df,
+                    tau = tau,
+                    u   = u,
+                    du  = du,
+                    x   = x,
+                    crossings = crossings, sigma = 1,
+                    lower.tail = lower.tail, EC = TRUE)
+    }
   }
   # Get the correct algorithm 1 for the class of u and whether SCoPES or SCBs
   # are computed
   if(u.type == "linear" || u.type == "constant"){
     if(u.type == "linear"){
       alg1 <- function(alpha, tau){
-        alg1_KRF( alpha, tau = tau, df = df,
-                  type = type, knots = knots,
-                  I_weights = I_weights, sigma = sigma)
+        # alg1_KRF( alpha, tau = tau, df = df,
+        #           type = type, knots = knots,
+        #           I_weights = I_weights, sigma = sigma)
+        alg1_fast( alpha, tau = tau, df = df,
+                   type = type, knots = knots,
+                   I_weights = I_weights, sigma = sigma,
+                   crossings = crossings, lower.tail = lower.tail)
       }
     }else{
       alg1 <- function(alpha, tau){
@@ -530,7 +601,9 @@ alg1_KRF <- function(alpha, knots, tau, df = NULL, type = "t",
   # slope =0 on the first interval
   u_fun[2, 1] <- 0
   # get the constant on the first interval
-  u_fun[1, 1] <- uniroot(f = find_u0, interval = c(0, 50), extendInt = "downX")$root
+  u_fun[1, 1] <- suppressWarnings(uniroot(f = find_u0,
+                                          interval = c(5e-2, 50),
+                                          extendInt = "yes")$root)
 
   # Initialize string for piecewise linear function
   fct_body_u  <- paste0("c_v[1]")
@@ -554,7 +627,9 @@ alg1_KRF <- function(alpha, knots, tau, df = NULL, type = "t",
             crossings = "up",
             t0 = 1) - alpha * I_weights[2*k-2]
       }
-      u_fun[2, 2*k-2] <- uniroot(f = find_mk, interval = c(-20, 20), extendInt = "downX")$root
+      u_fun[2, 2*k-2] <- suppressWarnings(uniroot(f = find_mk,
+                                                  interval = c(-20, 20),
+                                                  extendInt = "yes")$root)
 
       # String for p.linear function
       fct_body_u <- paste0(fct_body_u,
@@ -572,7 +647,9 @@ alg1_KRF <- function(alpha, knots, tau, df = NULL, type = "t",
             du = function(y){rep(mk, length(y))}, x = c(knots[2*k-1], knots[2*k]),
             crossings = "down", t0 = 2) - alpha * I_weights[2*k-1]
       }
-      u_fun[2, 2*k-1] <- uniroot(f = find_mk2, interval = c(-20, 20), extendInt = "downX")$root
+      u_fun[2, 2*k-1] <- suppressWarnings(uniroot(f = find_mk2,
+                                                  interval = c(-20, 20),
+                                                  extendInt = "downX")$root)
 
       # String for p.linear function
       fct_body_u <- paste0(fct_body_u,
@@ -596,7 +673,9 @@ alg1_KRF <- function(alpha, knots, tau, df = NULL, type = "t",
           x = c(knots[K], knots[K+1]),
           crossings = "up", t0 = 1) - alpha * I_weights[K]
     }
-    u_fun[2,K] <- uniroot(f = find_mK, interval = c(-20, 20))$root
+    u_fun[2,K] <- suppressWarnings(uniroot(f = find_mK,
+                                           interval = c(-20, 100),
+                                           extendInt = "yes")$root)
 
     # String for p.linear function
     fct_body_u <- paste0(fct_body_u, "+ c_v[",K,"]*pmin(pmax(t - knots[",K,"],0),  knots[",K+1,"] - knots[",K,"])")
@@ -618,6 +697,128 @@ alg1_KRF <- function(alpha, knots, tau, df = NULL, type = "t",
 
   return(list(u = u, du = function(t){ dufun(t, c_v = u_fun[2,], knots = knots) },
               c_v = coeffs, width = width))
+}
+
+#' Find an optimal piecewise linear quantile function q to remove
+#' conservativeness of standard Kac Rice formula approach for fair
+#' thresholds.
+#'
+#' @param sample add
+#' @return list with elements
+#'  \itemize{
+#'   \item q Vector containing the fair piecewise linear thresholding function at each x
+#'   \item qm Vector containing the offset and the slopes of the fair thresholding function
+#'   \item EmpRejections Numeric giving the empirical rejection rate of the fair
+#'   thresholding function with respect to the sample.
+#' }
+#' @export
+alg1_fast <- function(alpha, knots, tau, df = NULL, type = "t",
+                      I_weights = rep(1/(length(knots) - 1), length(knots) - 1),
+                      crossings = "up", lower.tail = FALSE,
+                      sigma = 1){
+
+
+  # Get the correct KRF formula
+  if(type == "t"){
+    KRF <- function(u, du, x){
+      KacRice_t( df  = df,
+                 tau = tau,
+                 u   = u,
+                 du  = du,
+                 x   = x,
+                 crossings = "up", sigma = 1,
+                 lower.tail = FALSE, EC = TRUE)
+    }
+  }else if(type == "chi2"){
+    KRF <- function(u, du, x){
+      KacRice_chi2( df  = df,
+                 tau = tau,
+                 u   = u,
+                 du  = du,
+                 x   = x,
+                 crossings = crossings, sigma = 1,
+                 lower.tail = lower.tail, EC = TRUE)
+    }
+  }
+
+
+  # Get the amount of Intervals
+  K <- length(I_weights)
+
+  # Initialize the parameters for the piecewise linear function on each Interval
+  u_fun <- matrix(NA, 2, K)
+
+  ##############################################################################
+  # Find constant for first interval
+  find_u0 <- Vectorize(function(u0){
+    KRF(u  = function(y){rep(u0, length(y))},
+        du = function(y){rep(0, length(y))},
+        x  = c(knots[1],  knots[2])) - alpha * I_weights[1]
+  })
+  # slope =0 on the first interval
+  u_fun[2, 1] <- 0
+  # get the constant on the first interval
+  u_fun[1, 1] <- suppressWarnings(uniroot(f = find_u0,
+                                          interval = c(1e-1, 50),
+                                          extendInt = "yes")$root)
+  #  u_fun[1, 1] <- bisect_from_negative(f = find_u0, interval = c(0, 50))$root
+
+  # Initialize string for piecewise linear function
+  fct_body_u  <- paste0("c_v[1]")
+  fct_body_du <- paste0("c_v[1]")
+
+  ##############################################################################
+  # Find constant for first interval
+  if(K == 1){
+    width <- c(u_fun[1, 1], u_fun[1, 1])
+    names(width) <- c("L1", "L2")
+
+    return(list( u = Vectorize(function(t){u_fun[1, 1]}),
+                 du = Vectorize(function(t){0}), width = width))
+  }else if(K != 1){
+    for(k in 2:K){
+      #---- even intervals
+      # Initialize start value on the interal
+      u_fun[1, k] <- u_fun[1, k-1] + u_fun[2, k-1] * (knots[k] - knots[k-1])
+
+      # Function to minimize to get slope
+      find_mk <- Vectorize(function(mk){
+        KRF(u = function(y){u_fun[1, k] + mk*(y - knots[k])},
+            du = function(y){rep(mk, length(y))},
+            x = c(knots[k], knots[k+1])) -  alpha * I_weights[k]
+      })
+      # Find the two options for the minimum
+      u_fun[2, k] = suppressWarnings(uniroot(f = find_mk, interval = c(-20, 100),
+                            tol = 1e-4, extendInt = "yes")$root)
+      #     u_fun[2, k] = bisect_from_negative(f = find_mk,
+      #                                         interval = c(-20, 20))$root
+
+      # String for p.linear function
+      fct_body_u <- paste0(fct_body_u,
+                           "+ c_v[",k,"]*pmin(pmax(t - knots[",k,"],0),  knots[",k+1,"] - knots[",k,"])")
+      fct_body_du <- paste0(fct_body_du,
+                            "+ c_v[",k,"]*pmax(sign(t - knots[",k,"]),0)*pmax(-sign(t - knots[",k+1,"]),0)")
+    }
+
+
+    coeffs = c(u_fun[1,1], u_fun[2,-1])
+
+    ufun       <- function(t, c_v, knots){}
+    body(ufun) <- parse(text = fct_body_u)
+    dufun       <- function(t, c_v, knots){}
+    body(dufun) <- parse(text = fct_body_du)
+
+    u = function(t){ ufun(t, c_v = coeffs, knots = knots) }
+
+    width <- c(integrate_save(f = Vectorize(function(x) abs(u(x)) ), c(0, 1) ),
+               sqrt(L2_cost(c(u_fun[1,1], u_fun[2,]), knots)))
+    names(width) <- c("L1", "L2")
+
+    return(list(u = u,
+                du = function(t){
+                  dufun(t, c_v = u_fun[2,], knots = knots) },
+                c_v = coeffs, width = width))
+  }
 }
 
 #' Find an optimal piecewise linear quantile function q to remove
@@ -672,7 +873,9 @@ quantile_nico <- function(alpha, knots, tau, df = NULL, type = "t",
   # slope =0 on the first interval
   u_fun[2, 1] <- 0
   # get the constant on the first interval
-  u_fun[1, 1] <- uniroot(f = find_u0, interval = c(0, 50), extendInt = "downX")$root
+  u_fun[1, 1] <- suppressWarnings(uniroot(f = find_u0,
+                                          interval = c(5e-2, 50),
+                                          extendInt = "upX")$root)
 #  u_fun[1, 1] <- bisect_from_negative(f = find_u0, interval = c(0, 50))$root
 
   # Initialize string for piecewise linear function
@@ -703,7 +906,9 @@ quantile_nico <- function(alpha, knots, tau, df = NULL, type = "t",
                 alpha * I_weights[k]
       })
       # Find the two options for the minimum
-      u_fun[2, k] = uniroot(f = find_mk, interval = c(-100, 100), extendInt = "downX", tol = 1e-4)$root
+      u_fun[2, k] = suppressWarnings(uniroot(f = find_mk,
+                                             interval = c(-20, 100),
+                                             extendInt = "yes", tol = 1e-4)$root)
  #     u_fun[2, k] = bisect_from_negative(f = find_mk,
 #                                         interval = c(-20, 20))$root
 
@@ -786,7 +991,9 @@ alg1_KRF_const <- function(alpha, tau, df = NULL, type = "t", knots,
           crossings = "up", t0 = 1) - alpha * I_weights[k]
     }
     # get the constant on the first interval
-    u_fun[k] <- uniroot(f = find_u0, interval = c(0, 50), extendInt = "downX")$root
+    u_fun[k] <- suppressWarnings(uniroot(f = find_u0,
+                                         interval = c(1e-1, 50),
+                                         extendInt = "downX")$root)
 
     # Initialize string for piecewise linear function
     fct_body_u <- paste0(fct_body_u, "+ c_v[",k,"]*ifelse(sign(t - knots[",k,"])==0, 1, pmax(sign(t - knots[",k,"]),0))*pmax(-sign(t - knots[",k+1,"]),0)")
