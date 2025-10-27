@@ -388,8 +388,14 @@ quantile_KRF <- function(x0, alpha, tau, type = "t", df = NULL, knots = c(0, 1),
   ub = c(x0[1]*1.2, ub)
 
   if(all(diff(x0[-1])==0)){
-    lb = c(x0[1]*0.8, -5/diff(knots))
-    ub = c(x0[1]*1.2,  5/diff(knots))
+    if(type == "t"){
+     lb = c(x0[1]*0.8, -5/diff(knots))
+     ub = c(x0[1]*1.2,  5/diff(knots))
+    }else{
+      lb = c(x0[1]*0.8, -15/diff(knots))
+      ub = c(x0[1]*1.1,  15/diff(knots))
+      ub[2] = 2/diff(knots)[1]
+    }
   }
 
   if(type == "t"){
@@ -419,7 +425,7 @@ quantile_KRF <- function(x0, alpha, tau, type = "t", df = NULL, knots = c(0, 1),
         maxeval   = 100,               # ggf. etwas höher, da mehr Nebenbedingungen
         xtol_rel  = 1e-4,
         ftol_rel  = 1e-4,
-        tol_constraints_eq   = 1e-3,
+        tol_constraints_eq   = 1e-6,
         tol_constraints_ineq = rep(1e-6, length(knots)),
         print_level = 0
       ))
