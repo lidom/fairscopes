@@ -225,7 +225,7 @@ fairSCB_var <- function(alpha, hatvar,
                              I_weights = q.method$I_weights,
                              u.type      = "linear",
                              crossings = "up",
-                             lower.tail = FALSE,
+                             lower.tail = FALSE, #TRUE, #
                              alpha_up  = q.method$alpha/2,
                              maxIter   = q.method$maxIter,
                              tol = alpha/2 / 100)
@@ -237,7 +237,7 @@ fairSCB_var <- function(alpha, hatvar,
                              I_weights  = q.method$I_weights,
                              u.type     = "linear",
                              crossings  = "down",
-                             lower.tail = TRUE,
+                             lower.tail =  TRUE, #FALSE, #
                              alpha_up   = q.method$alpha/2,
                              maxIter    = q.method$maxIter,
                              tol = alpha/2 / 100)
