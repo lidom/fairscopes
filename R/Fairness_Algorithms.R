@@ -266,7 +266,8 @@ fair_quantile_boot <- function(alpha, x, samples,
 #' @export
 quantile_KRF <- function(x0, alpha, tau, type = "t", df = NULL, knots = c(0, 1),
                          alpha_weights = rep(1 / (length(knots) - 1), length(knots) - 1),
-                         crossings = "up", lower.tail = FALSE, MAX = FALSE
+                         crossings = "up", lower.tail = FALSE, MAX = FALSE,
+                         lambda = 0.1, t0 = 1
                          ){
   # Initialize output
   summary <- list()
@@ -294,7 +295,7 @@ quantile_KRF <- function(x0, alpha, tau, type = "t", df = NULL, knots = c(0, 1),
                     du  = du,
                     x   = x,
                     crossings = crossings, sigma = 1,
-                    lower.tail = lower.tail, EC = TRUE)
+                    lower.tail = lower.tail, EC = TRUE, t0 = 1)
     }
   }
 
@@ -310,12 +311,11 @@ quantile_KRF <- function(x0, alpha, tau, type = "t", df = NULL, knots = c(0, 1),
   }
 
   ccc = ifelse(MAX, -1, 1) # change sign of target if max is needed
-
   # ----- Ziel + Gradient -----
   eval_f <- function(x) {
     list(
-      objective = ccc*L2_cost(x, knots),           # deine J-Funktion (Skalar)
-      gradient  = ccc*gr_L2_cost(x, knots)         # dein ∇J (oder numDeriv::grad(...))
+      objective = ccc*L2_cost(x, knots) + lambda * sum(x[-1]^2*diff(knots) ),           # deine J-Funktion (Skalar)
+      gradient  = ccc*gr_L2_cost(x, knots) + lambda * c(0, 2 * x[-1]*diff(knots))         # dein ∇J (oder numDeriv::grad(...))
     )
   }
 
@@ -388,13 +388,14 @@ quantile_KRF <- function(x0, alpha, tau, type = "t", df = NULL, knots = c(0, 1),
   ub = c(x0[1]*1.2, ub)
 
   if(all(diff(x0[-1])==0)){
-    if(type == "t"){
-     lb = c(x0[1]*0.8, -5/diff(knots))
-     ub = c(x0[1]*1.2,  5/diff(knots))
+    if(type == "chi2"){
+      lb = c(x0[1] * 0.8, -50/diff(knots))
+      ub = c(x0[1] * 1.3,  50/diff(knots))
+#      lb = c(x0[1]*0.8, -5/diff(knots))
+#      ub = c(x0[1]*1.2,  5/diff(knots))
     }else{
-      lb = c(x0[1]*0.8, -15/diff(knots))
-      ub = c(x0[1]*1.1,  15/diff(knots))
-      ub[2] = 2/diff(knots)[1]
+      lb = c(x0[1]*0.8, -5/diff(knots))
+      ub = c(x0[1]*1.2,  5/diff(knots))
     }
   }
 
@@ -492,7 +493,7 @@ fair_quantile_KRF <- function(alpha, tau, x = seq(0, 1, length.out = 2), df = NU
                     du  = du,
                     x   = x,
                     crossings = crossings, sigma = 1,
-                    lower.tail = lower.tail, EC = TRUE)
+                    lower.tail = lower.tail, EC = TRUE, t0 = 1)
     }
   }
   # Get the correct algorithm 1 for the class of u and whether SCoPES or SCBs
